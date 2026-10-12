@@ -7,6 +7,7 @@ This document provides a comprehensive overview of all architectural components,
 ## 1. What We Built & Implemented
 
 ### A. Core Video Pipeline (`src/lib/pipeline.ts`)
+
 - **Direct & Simultaneous Stream Watermarking**: Downloads Zoom cloud recordings and streams bytes into `ffmpeg` hardware encoders (`h264_videotoolbox` on macOS with fallback to `libx264 ultrafast`) to watermark and transcode on the fly.
 - **Resumable HTTP Range Downloads**: Recovers from network drops by resuming from the exact byte offset using HTTP `Range` headers rather than re-downloading multi-gigabyte videos.
 - **Live ETA & Progress Telemetry**: Emits Server-Sent Events (SSE) indicating stage (`downloading`, `watermarking`, `uploading`), percentage, speed, and remaining time.
@@ -15,8 +16,10 @@ This document provides a comprehensive overview of all architectural components,
   - Aborts the network streams.
   - Automatically unlinks partial temporary files (`.zoomyt-tmp/raw_*.mp4`, `.zoomyt-tmp/proc_*.mp4`).
   - Cleans up state so disk space and memory are never leaked.
+    just
 
 ### B. Upload Queue Store & Floating UI
+
 - **Persistent Global Queue (`src/lib/upload-queue-store.ts`)**: In-memory and `localStorage` queue ensuring page transitions in Next.js do not disrupt ongoing transfers.
 - **Non-blocking Floating Pill Drawer (`UploadQueueDrawer.tsx`)**:
   - Minimized state: Compact floating pill (`Queue (1/4) 45%`) in the bottom-right corner that never blocks background dashboard buttons.
@@ -25,6 +28,7 @@ This document provides a comprehensive overview of all architectural components,
 - **Network Drop & Regain**: Browser `online`/`offline` listeners that pause transfers during disconnects and automatically resume once connectivity returns.
 
 ### C. Visual Watermark Template Editor (`AutoWatermarkTemplateModal.tsx`)
+
 - **16:9 Canvas Preview**: Live visual positioning for logos and text badge overlays.
 - **Configurable Parameters**:
   - Logo scale slider & opacity slider.
@@ -33,6 +37,7 @@ This document provides a comprehensive overview of all architectural components,
 - **Persistence**: Saved via `/api/zoom-youtube/watermark-template` directly into PostgreSQL (`public.zy_settings.template_data`) with in-memory caching. No local JSON state files are generated. Automatically applied as default whenever `✨ Auto WM` direct uploads are started.
 
 ### D. Activity Logging & Database Audit History (`src/lib/activity-logger.ts`)
+
 - **PostgreSQL / Supabase Table (`public.zy_activity_logs`)**: Permanent table storing every transfer:
   - Video Topic, Account Name, YouTube URL, Video ID.
   - Privacy status, Resolution, Watermark mode.
@@ -64,6 +69,7 @@ The project is structured so that multiple machines (e.g. office Mac, dedicated 
 ```
 
 ### Step 1: Share the Same Environment Variables
+
 Both applications must point to the same Supabase instance and YouTube credentials. Ensure the `.env` or `.env.local` file in both locations contains:
 
 ```env
@@ -87,6 +93,7 @@ ENCRYPTION_SECRET="<YOUR_32_CHAR_SECRET_KEY>"
 ### Step 2: Database Synchronization
 
 Both apps share the `zy_` tables. The database schema includes:
+
 1. `public.zy_zoom_accounts`: Zoom Server-to-Server app credentials (encrypted).
 2. `public.zy_youtube_channel`: YouTube channel target and refresh tokens.
 3. `public.zy_activity_logs`: Live record of all upload attempts and video links.
@@ -102,6 +109,7 @@ Any Zoom account connected in `unioneducation` or template saved in one app is i
 When running both applications on the same machine for testing:
 
 1. **Start the Main App**:
+
    ```bash
    cd /Users/bibek/Developer/unioneducation/code/main
    npm run dev
@@ -116,6 +124,7 @@ When running both applications on the same machine for testing:
    ```
 
 If running `zoom-youtube-studio` on a separate laptop or remote machine:
+
 - Run `npm run dev` or `npm run worker` on the target machine.
 - The worker registers its hardware specs and free disk space to `zy_worker_nodes`.
 - The dashboard at `unioneducation/code/main` will display that machine under **Storage & Processing Devices**.
@@ -125,6 +134,7 @@ If running `zoom-youtube-studio` on a separate laptop or remote machine:
 ### Step 4: Synchronizing Code Updates
 
 Whenever updates are made to the video processing pipeline or queue components:
+
 1. Keep the core library files aligned:
    - `src/lib/pipeline.ts`
    - `src/lib/upload-queue-store.ts`
@@ -141,11 +151,11 @@ Whenever updates are made to the video processing pipeline or queue components:
 
 ## 3. Key Operational Features Summary
 
-| Feature | Description | Location |
-| :--- | :--- | :--- |
-| **Cancel Ongoing Task** | Stops encoding & downloads instantly via `SIGKILL` + removes temp files | Floating popup & browse rows |
-| **Cancel All** | Flushes the entire queue and aborts active processes | Floating popup header button |
-| **Resumable Downloads** | Auto-resumes interrupted Zoom downloads from the exact byte offset | `src/lib/pipeline.ts` |
-| **Activity History** | Audit log with YouTube links, duration, and status in PostgreSQL | Dashboard audit table & `zy_activity_logs` |
-| **Watermark Template** | Visual 16:9 template designer to configure logo & text positions | "Watermark Template" button |
-| **Quality Preset** | Toggle between 720p, 1080p, 480p, or Original on the fly | Top of Queue drawer |
+| Feature                 | Description                                                             | Location                                   |
+| :---------------------- | :---------------------------------------------------------------------- | :----------------------------------------- |
+| **Cancel Ongoing Task** | Stops encoding & downloads instantly via `SIGKILL` + removes temp files | Floating popup & browse rows               |
+| **Cancel All**          | Flushes the entire queue and aborts active processes                    | Floating popup header button               |
+| **Resumable Downloads** | Auto-resumes interrupted Zoom downloads from the exact byte offset      | `src/lib/pipeline.ts`                      |
+| **Activity History**    | Audit log with YouTube links, duration, and status in PostgreSQL        | Dashboard audit table & `zy_activity_logs` |
+| **Watermark Template**  | Visual 16:9 template designer to configure logo & text positions        | "Watermark Template" button                |
+| **Quality Preset**      | Toggle between 720p, 1080p, 480p, or Original on the fly                | Top of Queue drawer                        |
