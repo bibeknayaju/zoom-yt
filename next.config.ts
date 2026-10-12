@@ -1,16 +1,19 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
+  async redirects() {
+    return [
+      {
+        source: "/dashboard/zoom-youtube",
+        destination: "/dashboard",
+        permanent: false,
       },
-    },
+      {
+        source: "/dashboard/zoom-youtube/:path*",
+        destination: "/dashboard/:path*",
+        permanent: false,
+      },
+    ];
   },
 };
 
