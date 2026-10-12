@@ -142,17 +142,17 @@ CREATE INDEX IF NOT EXISTS idx_zy_rec_start ON public.zy_recordings(recording_st
 CREATE INDEX IF NOT EXISTS idx_zy_act_created ON public.zy_activity_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_zy_events_created ON public.zy_events(created_at DESC);
 
--- 8. Atomic Job Lease RPC Function (Prevents race conditions between laptops)
+-- 8. Atomic Job Lease RPC Function (Only claims explicitly queued/ready jobs)
 CREATE OR REPLACE FUNCTION public.zy_claim_job(p_node_id TEXT, p_lease_seconds INT DEFAULT 1800)
 RETURNS SETOF public.zy_recordings AS $$
 DECLARE
   v_rec public.zy_recordings;
 BEGIN
-  -- Select oldest pending or lease-expired recording
+  -- Select oldest explicitly queued recording (ignores idle 'discovered' meetings)
   SELECT *
   INTO v_rec
   FROM public.zy_recordings
-  WHERE (status IN ('discovered', 'ready') AND (lease_expires_at IS NULL OR lease_expires_at < now()))
+  WHERE (status IN ('queued', 'ready') AND (lease_expires_at IS NULL OR lease_expires_at < now()))
      OR (status IN ('downloading', 'watermarking', 'uploading') AND lease_expires_at < now())
   ORDER BY recording_start ASC
   LIMIT 1

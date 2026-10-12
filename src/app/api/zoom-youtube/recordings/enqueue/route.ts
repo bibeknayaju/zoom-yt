@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
         recording_start: startTime,
         download_url: downloadUrl,
         zoom_account_id: zoomAccountId?.startsWith?.("zoom-") ? null : zoomAccountId,
-        status: "discovered",
+        status: "queued",
         lease_expires_at: null,
         claimed_by: null,
         error_message: null,

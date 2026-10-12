@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { google } from "googleapis";
 import { createClient } from "@supabase/supabase-js";
 import { decryptToken } from "@/lib/crypto";
-import { checkDeviceStorage } from "@/lib/storage";
+import { checkDeviceStorage, getSafeTempDir } from "@/lib/storage";
 import { readZoomYtState } from "@/lib/zoomyt-store";
 import {
   recordActivityStart,
@@ -37,7 +37,7 @@ export function unregisterActiveTask(fileId: string) {
 
 export async function cancelPipelineTask(fileId: string): Promise<boolean> {
   const task = activeTasksMap.get(fileId);
-  const tempDir = path.join(process.cwd(), ".zoomyt-tmp");
+  const tempDir = getSafeTempDir();
   const rawPath = task?.rawPath || path.join(tempDir, `raw_${fileId}.mp4`);
   const procPath = task?.procPath || path.join(tempDir, `proc_${fileId}.mp4`);
 
@@ -937,7 +937,7 @@ export async function processRecordingEndToEnd(
     return { success: false, error: "Operation cancelled by user" };
   }
 
-  const tempDir = options.tempDir || path.join(process.cwd(), ".zoomyt-tmp");
+  const tempDir = options.tempDir || getSafeTempDir();
   await fsp.mkdir(tempDir, { recursive: true });
 
   const rawPath = path.join(tempDir, `raw_${options.fileId}.mp4`);
@@ -1215,7 +1215,7 @@ export async function renderWatermarkOnly(
   options: ProcessRecordingOptions,
   onProgress?: (info: PipelineProgressInfo) => void
 ): Promise<{ success: boolean; fileId: string; procPath?: string; error?: string }> {
-  const tempDir = options.tempDir || path.join(process.cwd(), ".zoomyt-tmp");
+  const tempDir = options.tempDir || getSafeTempDir();
   await fsp.mkdir(tempDir, { recursive: true });
 
   const rawPath = path.join(tempDir, `raw_${options.fileId}.mp4`);
@@ -1332,7 +1332,7 @@ export async function uploadWatermarkedToYouTube(
   },
   onProgress?: (info: PipelineProgressInfo) => void
 ): Promise<ProcessResult> {
-  const tempDir = options.tempDir || path.join(process.cwd(), ".zoomyt-tmp");
+  const tempDir = options.tempDir || getSafeTempDir();
   const rawPath = path.join(tempDir, `raw_${options.fileId}.mp4`);
   const procPath = path.join(tempDir, `proc_${options.fileId}.mp4`);
 

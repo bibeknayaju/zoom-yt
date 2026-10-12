@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { getSafeTempDir } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,7 +13,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing fileId parameter" }, { status: 400 });
     }
 
-    const procPath = path.join(process.cwd(), ".zoomyt-tmp", `proc_${fileId}.mp4`);
+    const tempDir = getSafeTempDir();
+    const procPath = path.join(tempDir, `proc_${fileId}.mp4`);
 
     if (!fs.existsSync(procPath)) {
       return NextResponse.json({ error: "Processed video not found on disk" }, { status: 404 });

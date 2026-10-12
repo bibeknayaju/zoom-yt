@@ -33,10 +33,28 @@ export interface StorageCheckOptions {
 }
 
 /**
+ * Returns a writable temp directory safe across local machines and cloud/serverless hosts.
+ */
+export function getSafeTempDir(): string {
+  if (process.env.LOCAL_TEMP_DIR) {
+    return path.resolve(process.env.LOCAL_TEMP_DIR);
+  }
+  // In Vercel or AWS Lambda, process.cwd() (/var/task) is read-only
+  if (
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.cwd().startsWith("/var/task")
+  ) {
+    return path.join(os.tmpdir(), "zoomyt-tmp");
+  }
+  return path.join(process.cwd(), ".zoomyt-tmp");
+}
+
+/**
  * Ensures the target working directory exists and returns storage statistics.
  */
 export async function checkDeviceStorage(options: StorageCheckOptions = {}): Promise<StorageStatus> {
-  const defaultDir = process.env.LOCAL_TEMP_DIR || path.join(process.cwd(), ".zoomyt-tmp");
+  const defaultDir = getSafeTempDir();
   const targetPath = options.targetDir || defaultDir;
   const warningThresholdGB = options.warningThresholdGB ?? 20;
   const criticalThresholdGB = options.criticalThresholdGB ?? 10;

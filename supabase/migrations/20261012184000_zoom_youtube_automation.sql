@@ -147,11 +147,11 @@ RETURNS SETOF public.zy_recordings AS $$
 DECLARE
   v_rec public.zy_recordings;
 BEGIN
-  -- Select oldest pending or lease-expired recording
+  -- Select oldest explicitly queued recording (ignores idle 'discovered' meetings)
   SELECT *
   INTO v_rec
   FROM public.zy_recordings
-  WHERE (status IN ('discovered', 'ready') AND (lease_expires_at IS NULL OR lease_expires_at < now()))
+  WHERE (status IN ('queued', 'ready') AND (lease_expires_at IS NULL OR lease_expires_at < now()))
      OR (status IN ('downloading', 'watermarking', 'uploading') AND lease_expires_at < now())
   ORDER BY recording_start ASC
   LIMIT 1
