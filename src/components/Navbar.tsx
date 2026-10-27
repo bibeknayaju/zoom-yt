@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { Film, Sliders, Shield, Layers, UploadCloud } from "lucide-react";
+import { Film, Sliders, Shield, Layers, UploadCloud, ListVideo, History } from "lucide-react";
 import { useUploadQueue } from "@/lib/upload-queue-store";
 
 interface NavbarProps {
@@ -18,7 +18,9 @@ export function Navbar({ userRole = "user", userEmail, onOpenQueue }: NavbarProp
   const activeCount = queue.filter((i) => i.status === "uploading" || i.status === "queued").length;
 
   const navItems = [
-    { href: "/dashboard", label: "Cloud Recordings", icon: Film },
+    { href: "/dashboard", label: "Dashboard", icon: Film },
+    { href: "/dashboard/discovered", label: "Discovered Videos", icon: ListVideo },
+    { href: "/dashboard/activity", label: "Activity Logs", icon: History },
     { href: "/dashboard/studio", label: "Watermark Studio", icon: Sliders },
     ...(userRole === "admin"
       ? [{ href: "/dashboard/admin", label: "Admin Settings", icon: Shield }]

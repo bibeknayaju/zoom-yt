@@ -1,13 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 
 export type VideoResolution = "1080p" | "720p" | "480p" | "original";
-export type WatermarkPreset = "both" | "logo" | "text" | "none";
+export type WatermarkPreset = "both" | "logo" | "image" | "text" | "none";
 
-export function buildWatermarkConfig(preset: WatermarkPreset) {
-  if (preset === "none") return { type: "none" };
-
+export function buildWatermarkConfig(preset?: WatermarkPreset) {
   let savedTpl: any = null;
   if (typeof window !== "undefined") {
     try {
@@ -15,6 +13,10 @@ export function buildWatermarkConfig(preset: WatermarkPreset) {
       if (raw) savedTpl = JSON.parse(raw);
     } catch {}
   }
+
+  const effectivePreset: WatermarkPreset = preset || savedTpl?.watermarkType || globalWatermarkPreset || "both";
+
+  if (effectivePreset === "none") return { type: "none" };
 
   const logoScale = typeof savedTpl?.imageScale === "number" ? savedTpl.imageScale : 0.18;
   const logoOpacity = typeof savedTpl?.imageOpacity === "number" ? savedTpl.imageOpacity : 0.85;
@@ -28,7 +30,7 @@ export function buildWatermarkConfig(preset: WatermarkPreset) {
   const textPosX = typeof savedTpl?.textPosX === "number" ? savedTpl.textPosX : 0.04;
   const textPosY = typeof savedTpl?.textPosY === "number" ? savedTpl.textPosY : 0.90;
 
-  if (preset === "logo") {
+  if (effectivePreset === "logo" || effectivePreset === "image") {
     return {
       type: "image",
       scale: logoScale,
@@ -38,7 +40,7 @@ export function buildWatermarkConfig(preset: WatermarkPreset) {
       logoPath,
     };
   }
-  if (preset === "text") {
+  if (effectivePreset === "text") {
     return {
       type: "text",
       text,
@@ -88,7 +90,7 @@ let globalWatermarkPreset: WatermarkPreset = "both";
 let isProcessing = false;
 let activeAbortController: AbortController | null = null;
 let activeProcessingFileId: string | null = null;
-let listeners: Array<() => void> = [];
+const listeners = new Set<() => void>();
 
 
 // Initialize from localStorage if in browser
@@ -102,8 +104,16 @@ if (typeof window !== "undefined") {
 
   try {
     const savedWm = localStorage.getItem("zoomyt_queue_watermark_preset") as WatermarkPreset;
-    if (savedWm && ["both", "logo", "text", "none"].includes(savedWm)) {
-      globalWatermarkPreset = savedWm;
+    if (savedWm && ["both", "logo", "image", "text", "none"].includes(savedWm)) {
+      globalWatermarkPreset = (savedWm === "logo" ? "image" : savedWm) as WatermarkPreset;
+    } else {
+      const rawTpl = localStorage.getItem("zoomyt_auto_watermark_template");
+      if (rawTpl) {
+        const parsed = JSON.parse(rawTpl);
+        if (parsed?.watermarkType && ["both", "logo", "image", "text", "none"].includes(parsed.watermarkType)) {
+          globalWatermarkPreset = (parsed.watermarkType === "logo" ? "image" : parsed.watermarkType) as WatermarkPreset;
+        }
+      }
     }
   } catch {}
 
@@ -149,7 +159,13 @@ if (typeof window !== "undefined") {
 }
 
 function notifyListeners() {
-  listeners.forEach((fn) => fn());
+  listeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (e) {
+      console.error("Queue store listener error:", e);
+    }
+  });
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem("zoomyt_direct_queue", JSON.stringify(globalQueue));
@@ -244,7 +260,7 @@ async function processNextQueueItem() {
       body: JSON.stringify({
         recording: nextItem.recording,
         watermark: finalWatermark,
-        watermarkText: finalWatermark?.text || "Union Education",
+        watermarkText: (finalWatermark?.type === "image" || finalWatermark?.type === "none") ? "" : (finalWatermark?.text || "Union Education"),
         resolution: isNoWatermark ? "original" : (nextItem.resolution || globalResolution),
         privacyStatus: "unlisted",
       }),
@@ -432,22 +448,58 @@ export function cancelAllQueue() {
   notifyListeners();
 }
 
+const EMPTY_QUEUE: DirectUploadQueueItem[] = [];
+
+function subscribe(callback: () => void) {
+  listeners.add(callback);
+  return () => {
+    listeners.delete(callback);
+  };
+}
+
+function getQueueSnapshot(): DirectUploadQueueItem[] {
+  return globalQueue;
+}
+
+function getServerQueueSnapshot(): DirectUploadQueueItem[] {
+  return EMPTY_QUEUE;
+}
+
+function getResolutionSnapshot(): VideoResolution {
+  return globalResolution;
+}
+
+function getServerResolutionSnapshot(): VideoResolution {
+  return "720p";
+}
+
+function getWatermarkPresetSnapshot(): WatermarkPreset {
+  return globalWatermarkPreset;
+}
+
+function getServerWatermarkPresetSnapshot(): WatermarkPreset {
+  return "both";
+}
+
 export function useUploadQueue(onItemComplete?: () => void) {
-  const [queue, setQueue] = useState<DirectUploadQueueItem[]>(() => [...globalQueue]);
+  const queue = useSyncExternalStore(subscribe, getQueueSnapshot, getServerQueueSnapshot);
+  const currentResolution = useSyncExternalStore(subscribe, getResolutionSnapshot, getServerResolutionSnapshot);
+  const currentWatermarkPreset = useSyncExternalStore(subscribe, getWatermarkPresetSnapshot, getServerWatermarkPresetSnapshot);
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const [currentResolution, setCurrentResolutionState] = useState<VideoResolution>(() => globalResolution);
-  const [currentWatermarkPreset, setCurrentWatermarkPresetState] = useState<WatermarkPreset>(() => globalWatermarkPreset);
 
   useEffect(() => {
+    let lastUploadedCount = globalQueue.filter((i) => i.status === "uploaded" || i.status === "failed").length;
+
     const listener = () => {
-      setQueue([...globalQueue]);
-      setCurrentResolutionState(globalResolution);
-      setCurrentWatermarkPresetState(globalWatermarkPreset);
-      if (onItemComplete) {
-        onItemComplete();
+      const currentUploadedCount = globalQueue.filter((i) => i.status === "uploaded" || i.status === "failed").length;
+      if (currentUploadedCount > lastUploadedCount) {
+        lastUploadedCount = currentUploadedCount;
+        if (onItemComplete) {
+          onItemComplete();
+        }
       }
     };
-    listeners.push(listener);
+    listeners.add(listener);
 
     // Start processing if items queued and not currently active
     if (!isProcessing && globalQueue.some((i) => i.status === "queued")) {
@@ -455,28 +507,28 @@ export function useUploadQueue(onItemComplete?: () => void) {
     }
 
     return () => {
-      listeners = listeners.filter((fn) => fn !== listener);
+      listeners.delete(listener);
     };
   }, [onItemComplete]);
 
   const setQueueResolution = useCallback((res: VideoResolution) => {
     globalResolution = res;
-    setCurrentResolutionState(res);
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem("zoomyt_queue_resolution", res);
       } catch {}
     }
+    notifyListeners();
   }, []);
 
   const setQueueWatermarkPreset = useCallback((preset: WatermarkPreset) => {
     globalWatermarkPreset = preset;
-    setCurrentWatermarkPresetState(preset);
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem("zoomyt_queue_watermark_preset", preset);
       } catch {}
     }
+    notifyListeners();
   }, []);
 
   const addToQueue = useCallback(

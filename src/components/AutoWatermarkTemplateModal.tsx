@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Sparkles,
@@ -14,6 +14,7 @@ import {
   Check,
   Eye,
   Info,
+  Move,
 } from "lucide-react";
 import {
   AutoWatermarkTemplate,
@@ -70,6 +71,9 @@ export function AutoWatermarkTemplateModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState<"image" | "text" | null>(null);
+  const dragStartRef = useRef({ startX: 0, startY: 0, initPosX: 0, initPosY: 0 });
 
   // Load saved template on open
   useEffect(() => {
@@ -142,6 +146,44 @@ export function AutoWatermarkTemplateModal({
       setTemplate(DEFAULT_WATERMARK_TEMPLATE);
     }
   };
+
+  const handlePointerDown = (type: "image" | "text", e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(type);
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initPosX: type === "image" ? template.imagePosX : template.textPosX,
+      initPosY: type === "image" ? template.imagePosY : template.textPosY,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging || !canvasContainerRef.current) return;
+    const rect = canvasContainerRef.current.getBoundingClientRect();
+    const deltaX = (e.clientX - dragStartRef.current.startX) / rect.width;
+    const deltaY = (e.clientY - dragStartRef.current.startY) / rect.height;
+
+    const clamp = (val: number, min: number, max: number) =>
+      Math.max(min, Math.min(max, Math.round(val * 100) / 100));
+
+    if (isDragging === "image") {
+      setTemplate((prev) => ({
+        ...prev,
+        imagePosX: clamp(dragStartRef.current.initPosX + deltaX, 0.01, 0.88),
+        imagePosY: clamp(dragStartRef.current.initPosY + deltaY, 0.01, 0.88),
+      }));
+    } else if (isDragging === "text") {
+      setTemplate((prev) => ({
+        ...prev,
+        textPosX: clamp(dragStartRef.current.initPosX + deltaX, 0.01, 0.88),
+        textPosY: clamp(dragStartRef.current.initPosY + deltaY, 0.01, 0.88),
+      }));
+    }
+  };
+
+  const handlePointerUp = () => setIsDragging(null);
 
   const setLogoPositionPreset = (pos: "top-right" | "top-left" | "bottom-right" | "bottom-left") => {
     switch (pos) {
@@ -231,7 +273,14 @@ export function AutoWatermarkTemplateModal({
             </div>
 
             {/* Canvas Container */}
-            <div className="relative aspect-video w-full rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 border-2 border-slate-700 overflow-hidden shadow-inner flex items-center justify-center select-none">
+            <div
+              ref={canvasContainerRef}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className={`relative aspect-video w-full rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 border-2 border-slate-700 overflow-hidden shadow-inner flex items-center justify-center select-none touch-none ${
+                isDragging ? "cursor-grabbing" : ""
+              }`}>
               {/* Simulated Lecture Screen Background */}
               <div className="absolute inset-0 opacity-20 pointer-events-none flex flex-col justify-between p-6">
                 <div className="border border-white/20 rounded-lg p-4 max-w-sm space-y-2">
@@ -254,23 +303,39 @@ export function AutoWatermarkTemplateModal({
                 <div className="border-b border-dashed border-white/30" />
               </div>
 
+              {/* Drag instruction badge */}
+              <div className="absolute top-2.5 left-2.5 z-10 pointer-events-none bg-black/60 backdrop-blur-sm border border-white/10 px-2 py-1 rounded-md text-[10px] text-slate-300 flex items-center gap-1.5 font-medium">
+                <Move className="w-2.5 h-2.5 text-amber-400" />
+                <span>Drag & drop logo or badge to reposition</span>
+              </div>
+
               {/* 1. Watermark Logo Layer */}
               {(template.watermarkType === "both" || template.watermarkType === "image") && (
                 <div
-                  className="absolute pointer-events-none transition-all duration-75"
+                  onPointerDown={(e) => handlePointerDown("image", e)}
                   style={{
                     left: `${template.imagePosX * 100}%`,
                     top: `${template.imagePosY * 100}%`,
                     width: `${template.imageScale * 100}%`,
                     opacity: template.imageOpacity,
-                  }}>
+                    cursor: isDragging === "image" ? "grabbing" : "grab",
+                  }}
+                  className={`absolute z-20 transition-transform group touch-none ${
+                    isDragging === "image"
+                      ? "ring-2 ring-amber-400 scale-105 shadow-2xl"
+                      : "hover:ring-2 hover:ring-amber-400/70"
+                  }`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={currentLogo.previewSrc}
                     alt="Watermark Logo"
-                    className="w-full h-auto drop-shadow-lg"
+                    draggable={false}
+                    className="w-full h-auto drop-shadow-lg pointer-events-none"
                   />
-                  <div className="absolute -bottom-4 left-0 text-[9px] font-mono font-bold text-amber-300 bg-black/80 px-1 rounded whitespace-nowrap">
+                  <div className="absolute -top-3 -right-3 bg-amber-500 text-slate-900 rounded-full p-1 opacity-0 group-hover:opacity-100 transition shadow">
+                    <Move className="w-2.5 h-2.5" />
+                  </div>
+                  <div className="absolute -bottom-4 left-0 text-[9px] font-mono font-bold text-amber-300 bg-black/80 px-1 rounded whitespace-nowrap pointer-events-none">
                     Logo ({Math.round(template.imagePosX * 100)}%, {Math.round(template.imagePosY * 100)}%)
                   </div>
                 </div>
@@ -279,21 +344,29 @@ export function AutoWatermarkTemplateModal({
               {/* 2. Text Badge Layer */}
               {(template.watermarkType === "both" || template.watermarkType === "text") && (
                 <div
-                  className="absolute pointer-events-none transition-all duration-75"
+                  onPointerDown={(e) => handlePointerDown("text", e)}
                   style={{
                     left: `${template.textPosX * 100}%`,
                     top: `${template.textPosY * 100}%`,
                     opacity: template.textOpacity,
-                  }}>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white shadow-xl">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    cursor: isDragging === "text" ? "grabbing" : "grab",
+                  }}
+                  className={`absolute z-20 transition-transform group touch-none ${
+                    isDragging === "text"
+                      ? "ring-2 ring-cyan-400 scale-105 shadow-2xl"
+                      : "hover:ring-2 hover:ring-cyan-400/70"
+                  }`}>
+                  <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white shadow-xl pointer-events-none">
                     <span
                       className="font-bold tracking-wide"
                       style={{ fontSize: `${Math.max(10, Math.round(template.fontSize * 0.45))}px` }}>
                       {template.watermarkText || "Union Education"}
                     </span>
                   </div>
-                  <div className="absolute -bottom-4 left-0 text-[9px] font-mono font-bold text-cyan-300 bg-black/80 px-1 rounded whitespace-nowrap">
+                  <div className="absolute -top-3 -right-3 bg-cyan-500 text-slate-900 rounded-full p-1 opacity-0 group-hover:opacity-100 transition shadow">
+                    <Move className="w-2.5 h-2.5" />
+                  </div>
+                  <div className="absolute -bottom-4 left-0 text-[9px] font-mono font-bold text-cyan-300 bg-black/80 px-1 rounded whitespace-nowrap pointer-events-none">
                     Badge ({Math.round(template.textPosX * 100)}%, {Math.round(template.textPosY * 100)}%)
                   </div>
                 </div>

@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "dev:all": "concurrently -k -n next,worker -c cyan,yellow \"next dev\" \"tsx scripts/worker.ts\"",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "worker": "tsx scripts/worker.ts"
+    "worker": "tsx scripts/worker.ts",
+    "worker:cloud": "tsx scripts/cloud-worker.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.13",

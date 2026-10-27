@@ -8,7 +8,15 @@ const isPublicRoute = createRouteMatcher([
 
 export default clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {
-    await auth.protect();
+    const { userId } = await auth();
+    if (!userId) {
+      // If an API route is hit while signed out, return a clear 401 JSON response
+      // rather than letting Clerk rewrite to an internal 404 HTML page.
+      if (request.nextUrl.pathname.startsWith("/api/")) {
+        return Response.json({ success: false, error: "Unauthorized. Please sign in." }, { status: 401 });
+      }
+      await auth.protect();
+    }
   }
 });
 

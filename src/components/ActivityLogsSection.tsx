@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Youtube } from "@/components/icons/Youtube";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
@@ -81,8 +82,11 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
     try {
       setLoading(true);
       const res = await fetch("/api/zoom-youtube/activity-logs?limit=200");
-      const data = await res.json();
-      if (data.success && Array.isArray(data.logs)) {
+      if (!res.ok) {
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (data?.success && Array.isArray(data.logs)) {
         setLogs(data.logs);
         setLastRefreshed(new Date());
       }
@@ -95,7 +99,11 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
 
   useEffect(() => {
     fetchLogs();
-    const interval = setInterval(fetchLogs, 12000); // Polling every 12 seconds
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchLogs();
+      }
+    }, 20000); // Polling every 20s when visible
     return () => clearInterval(interval);
   }, [fetchLogs]);
 
@@ -211,7 +219,14 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <Link
+            href="/dashboard/activity"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg shadow-sm transition">
+            <History className="w-3.5 h-3.5" />
+            <span>Full Logs &amp; Pagination &rarr;</span>
+          </Link>
+
           <button
             onClick={fetchLogs}
             disabled={loading}

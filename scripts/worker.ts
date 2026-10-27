@@ -103,23 +103,46 @@ async function pollAndExecute() {
 
   while (isRunning) {
     try {
-      // 1. Atomically Claim Job from Database
-      const { data: claimedJobs, error: claimErr } = await supabase.rpc("zy_claim_job", {
-        p_node_id: NODE_ID,
-        p_lease_seconds: 3600, // 60-minute processing lease
-      });
+      // 1. Atomically Claim Job from Database (ONLY explicitly queued tasks, never auto-process 'discovered')
+      const { data: candidateJobs, error: selectErr } = await supabase
+        .from("zy_recordings")
+        .select("*")
+        .eq("status", "queued")
+        .order("recording_start", { ascending: true })
+        .limit(1);
 
-      if (claimErr) {
-        console.error("❌ [Worker] RPC zy_claim_job error:", claimErr.message);
+      if (selectErr) {
+        console.error("❌ [Worker] Error checking queue:", selectErr.message);
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         continue;
       }
 
-      const job = claimedJobs && claimedJobs.length > 0 ? claimedJobs[0] : null;
+      const candidate = candidateJobs && candidateJobs.length > 0 ? candidateJobs[0] : null;
 
-      if (!job) {
-        // No pending jobs, wait for next poll
+      if (!candidate) {
+        // No explicitly queued jobs, wait for next poll
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        continue;
+      }
+
+      // Atomically claim and lease this queued recording
+      const { data: claimedJob, error: leaseErr } = await supabase
+        .from("zy_recordings")
+        .update({
+          status: "downloading",
+          claimed_by: NODE_ID,
+          lease_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", candidate.id)
+        .eq("status", "queued")
+        .select()
+        .maybeSingle();
+
+      const job = claimedJob;
+      if (!job) {
+        // Another worker claimed it or status changed, check next
+        await new Promise((r) => setTimeout(r, 1000));
         continue;
       }
 

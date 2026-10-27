@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Laptop,
   HardDrive,
@@ -130,6 +131,8 @@ export default function ZoomYouTubeDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [updatingNode, setUpdatingNode] = useState<string | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [modalAutoWatermark, setModalAutoWatermark] = useState(true);
+  const [recWatermarkOverrides, setRecWatermarkOverrides] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -143,26 +146,28 @@ export default function ZoomYouTubeDashboardPage() {
         fetch("/api/zoom-youtube/recordings"),
       ]);
 
-      const devData = await devRes.json();
-      if (devData.success) {
+      const devData = devRes.ok ? await devRes.json().catch(() => null) : null;
+      if (devData?.success) {
         setDevices(devData.devices || []);
         setPrimaryNodeId(devData.primaryNodeId);
-      } else {
-        setError(devData.error || "Failed to load devices");
+      } else if (devRes.status === 401) {
+        setError("Session expired. Please sign in again.");
+      } else if (devData?.error) {
+        setError(devData.error);
       }
 
-      const ytData = await ytRes.json();
-      if (ytData.success) {
+      const ytData = ytRes.ok ? await ytRes.json().catch(() => null) : null;
+      if (ytData?.success) {
         setYtStatus(ytData);
       }
 
-      const zoomData = await zoomRes.json();
-      if (zoomData.success) {
+      const zoomData = zoomRes.ok ? await zoomRes.json().catch(() => null) : null;
+      if (zoomData?.success) {
         setZoomAccounts(zoomData.accounts || []);
       }
 
-      const recData = await recRes.json();
-      if (recData.success) {
+      const recData = recRes.ok ? await recRes.json().catch(() => null) : null;
+      if (recData?.success) {
         setRecordings(recData.recordings || []);
       }
     } catch (err: unknown) {
@@ -175,7 +180,11 @@ export default function ZoomYouTubeDashboardPage() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 15000); // Poll every 15s
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchStatus();
+      }
+    }, 25000); // Poll every 25s when tab is visible
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
@@ -357,7 +366,7 @@ export default function ZoomYouTubeDashboardPage() {
   };
 
   const handleProcessSingleRecording = async (rec: any) => {
-    const wmConfig = buildWatermarkConfig(currentWatermarkPreset || "both");
+    const wmConfig = buildWatermarkConfig(currentWatermarkPreset);
     const isNoWm = !wmConfig?.type || wmConfig.type === "none";
     if (!confirm(isNoWm ? `Start downloading raw and uploading "${rec.topic}" to YouTube?` : `Start downloading, watermarking, and uploading "${rec.topic}" to YouTube?`)) return;
     setProcessingFileId(rec.fileId);
@@ -486,13 +495,21 @@ export default function ZoomYouTubeDashboardPage() {
               Browse Zoom cloud recordings, launch Watermark Studio, or run high-speed YouTube uploads.
             </p>
           </div>
-          <button
-            onClick={fetchStatus}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-200 bg-slate-900 border border-slate-700/80 rounded-xl hover:bg-slate-800 transition shadow-sm disabled:opacity-50">
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh Recordings
-          </button>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setShowTemplateModal(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-amber-300 bg-amber-950/40 border border-amber-700/60 rounded-xl hover:bg-amber-900/50 hover:border-amber-600 transition shadow-sm">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>Watermark Template</span>
+            </button>
+            <button
+              onClick={fetchStatus}
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-200 bg-slate-900 border border-slate-700/80 rounded-xl hover:bg-slate-800 transition shadow-sm disabled:opacity-50">
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
         </div>
 
       {/* Critical / Warning Storage Banner */}
@@ -996,8 +1013,35 @@ export default function ZoomYouTubeDashboardPage() {
                         </button>
                       ))}
                     </div>
+                    {/* Auto Watermark Default Toggle */}
                     <button
-                      onClick={() => handleQueueAllDirectUpload(browsedRecordings, selectedZoomAccountForBrowse.accountName)}
+                      type="button"
+                      onClick={() => {
+                        const nextVal = !modalAutoWatermark;
+                        setModalAutoWatermark(nextVal);
+                        setRecWatermarkOverrides({});
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition ${
+                        modalAutoWatermark
+                          ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
+                          : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
+                      }`}
+                      title={modalAutoWatermark ? "Auto-Watermark is ON for direct uploads. Click to turn OFF." : "Auto-Watermark is OFF (Raw Upload). Click to turn ON."}>
+                      <Sparkles className={`w-3.5 h-3.5 ${modalAutoWatermark ? "text-amber-600" : "text-slate-400"}`} />
+                      <span>{modalAutoWatermark ? "Auto WM: ON" : "No WM (Raw)"}</span>
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        handleQueueAllDirectUpload(
+                          browsedRecordings,
+                          selectedZoomAccountForBrowse.accountName,
+                          {
+                            watermark: modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
+                            resolution: modalAutoWatermark ? currentResolution : "original",
+                          }
+                        )
+                      }
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shadow-sm transition">
                       <Youtube className="w-3.5 h-3.5 text-red-600" />
                       <span>⚡ Direct Upload All ({browsedRecordings.length})</span>
@@ -1055,7 +1099,14 @@ export default function ZoomYouTubeDashboardPage() {
                             <span>•</span>
                             <span>{rec.durationMinutes} mins</span>
                             <span>•</span>
-                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">{toMB(rec.fileSizeBytes)} MB</span>
+                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-semibold">
+                              📹 Video: {toMB(rec.fileSizeBytes)} MB
+                            </span>
+                            {rec.recordingType && (
+                              <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                {rec.recordingType.replace(/_/g, " ")}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1106,12 +1157,64 @@ export default function ZoomYouTubeDashboardPage() {
                               </div>
                             )
                           ) : (
-                            <button
-                              onClick={() => handleQueueDirectUpload(rec, selectedZoomAccountForBrowse.accountName)}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition hover:scale-[1.02]">
-                              <Youtube className="w-3.5 h-3.5 text-red-300" />
-                              <span>Direct Upload to YT</span>
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              {(() => {
+                                const isRowWm =
+                                  recWatermarkOverrides[rec.fileId] !== undefined
+                                    ? recWatermarkOverrides[rec.fileId]
+                                    : modalAutoWatermark;
+                                return (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setRecWatermarkOverrides((prev) => ({
+                                          ...prev,
+                                          [rec.fileId]: !isRowWm,
+                                        }))
+                                      }
+                                      className={`inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold border transition ${
+                                        isRowWm
+                                          ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
+                                          : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
+                                      }`}
+                                      title={
+                                        isRowWm
+                                          ? "Watermarking is enabled for this video. Click to upload raw."
+                                          : "Watermarking is disabled. Click to enable Auto Watermark."
+                                      }>
+                                      {isRowWm ? (
+                                        <>
+                                          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                          <span>✨ WM: ON</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="text-slate-400 text-xs">🚫</span>
+                                          <span>Raw</span>
+                                        </>
+                                      )}
+                                    </button>
+
+                                    <button
+                                      onClick={() =>
+                                        handleQueueDirectUpload(
+                                          rec,
+                                          selectedZoomAccountForBrowse.accountName,
+                                          {
+                                            watermark: isRowWm ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
+                                            resolution: isRowWm ? currentResolution : "original",
+                                          }
+                                        )
+                                      }
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition hover:scale-[1.02]">
+                                      <Youtube className="w-3.5 h-3.5 text-red-300" />
+                                      <span>Direct Upload to YT</span>
+                                    </button>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           )}
 
                           <button
@@ -1165,17 +1268,26 @@ export default function ZoomYouTubeDashboardPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleSyncRecordings}
-            disabled={syncingRecordings}
-            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50 self-start sm:self-auto">
-            {syncingRecordings ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <DownloadCloud className="w-4 h-4" />
-            )}
-            {syncingRecordings ? "Scanning Zoom Cloud..." : "Sync from Zoom Now"}
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <Link
+              href="/dashboard/discovered"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-sm transition">
+              <Film className="w-3.5 h-3.5" />
+              <span>Full Discovered Page &amp; Pagination &rarr;</span>
+            </Link>
+
+            <button
+              onClick={handleSyncRecordings}
+              disabled={syncingRecordings}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50">
+              {syncingRecordings ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <DownloadCloud className="w-4 h-4" />
+              )}
+              {syncingRecordings ? "Scanning Zoom Cloud..." : "Sync from Zoom Now"}
+            </button>
+          </div>
         </div>
 
         {/* Filter Tabs */}
@@ -1355,7 +1467,18 @@ export default function ZoomYouTubeDashboardPage() {
         currentWatermarkPreset={currentWatermarkPreset}
         setQueueWatermarkPreset={setQueueWatermarkPreset}
       />
-      <AutoWatermarkTemplateModal isOpen={showTemplateModal} onClose={() => setShowTemplateModal(false)} />
+      <AutoWatermarkTemplateModal
+        isOpen={showTemplateModal}
+        onClose={() => setShowTemplateModal(false)}
+        onSaved={(tpl) => {
+          if (tpl.watermarkType && setQueueWatermarkPreset) {
+            setQueueWatermarkPreset(tpl.watermarkType);
+          }
+          if (tpl.selectedResolution && setQueueResolution) {
+            setQueueResolution(tpl.selectedResolution);
+          }
+        }}
+      />
       </div>
     </div>
   );

@@ -11,27 +11,69 @@ function getSupabase() {
 export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabase();
+    const searchParams = req.nextUrl.searchParams;
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+    const statusParam = searchParams.get("status");
+    const searchParam = searchParams.get("search");
+
+    const isPaginated = pageParam !== null;
+    const page = Math.max(1, parseInt(pageParam || "1", 10));
+    const limit = Math.max(1, Math.min(200, parseInt(limitParam || (isPaginated ? "25" : "100"), 10)));
+    const offset = (page - 1) * limit;
+
     let recordings: any[] = [];
+    let total = 0;
 
     if (supabase) {
-      const { data, error } = await supabase
+      let query = supabase
         .from("zy_recordings")
-        .select(`
+        .select(
+          `
           *,
           zy_zoom_accounts ( account_name )
-        `)
-        .order("recording_start", { ascending: false })
-        .limit(100);
+        `,
+          { count: "exact" }
+        );
+
+      if (statusParam && statusParam !== "all") {
+        query = query.eq("status", statusParam);
+      }
+
+      if (searchParam && searchParam.trim()) {
+        const term = `%${searchParam.trim()}%`;
+        query = query.or(`topic.ilike.${term},meeting_id.ilike.${term}`);
+      }
+
+      query = query.order("recording_start", { ascending: false });
+
+      if (isPaginated) {
+        query = query.range(offset, offset + limit - 1);
+      } else {
+        query = query.limit(limit);
+      }
+
+      const { data, error, count } = await query;
 
       if (!error && data) {
         recordings = data.map((r: any) => ({
           ...r,
           accountName: r.zy_zoom_accounts?.account_name || "Zoom Account",
         }));
+        total = count ?? recordings.length;
       }
     }
 
-    return NextResponse.json({ success: true, recordings });
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return NextResponse.json({
+      success: true,
+      recordings,
+      total,
+      page,
+      limit,
+      totalPages,
+    });
   } catch (error) {
     console.error("GET /api/zoom-youtube/recordings error:", error);
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });

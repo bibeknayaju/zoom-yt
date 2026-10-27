@@ -169,21 +169,51 @@ export async function recordActivityFailure(
   }
 }
 
+export interface GetActivityLogsOptions {
+  limit?: number;
+  page?: number;
+  status?: string;
+  search?: string;
+}
+
 /**
- * Fetches recent activity logs directly from Supabase / PostgreSQL zy_activity_logs.
+ * Fetches recent activity logs directly from Supabase / PostgreSQL zy_activity_logs with pagination & filtering.
  */
-export async function getActivityLogs(limit = 100): Promise<ActivityLogItem[]> {
+export async function getActivityLogs(
+  options: number | GetActivityLogsOptions = 100
+): Promise<{ logs: ActivityLogItem[]; total: number }> {
+  const opts: GetActivityLogsOptions = typeof options === "number" ? { limit: options } : options;
+  const limit = Math.max(1, Math.min(200, opts.limit || 25));
+  const page = Math.max(1, opts.page || 1);
+  const status = opts.status;
+  const search = opts.search;
+  const offset = (page - 1) * limit;
+
   const supabase = getSupabase();
   if (supabase) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("zy_activity_logs")
-        .select("*")
-        .order("started_at", { ascending: false })
-        .limit(limit);
+        .select("*", { count: "exact" });
+
+      if (status && status !== "all") {
+        query = query.eq("status", status);
+      }
+
+      if (search && search.trim()) {
+        const term = `%${search.trim()}%`;
+        query = query.or(
+          `topic.ilike.${term},custom_title.ilike.${term},account_name.ilike.${term},file_id.ilike.${term},error_message.ilike.${term}`
+        );
+      }
+
+      query = query.order("started_at", { ascending: false });
+      query = query.range(offset, offset + limit - 1);
+
+      const { data, count, error } = await query;
 
       if (!error && data) {
-        const mapped = data.map((row: any) => ({
+        const mapped: ActivityLogItem[] = data.map((row: any) => ({
           id: row.id,
           fileId: row.file_id,
           topic: row.topic,
@@ -202,15 +232,32 @@ export async function getActivityLogs(limit = 100): Promise<ActivityLogItem[]> {
           completedAt: row.completed_at,
           durationSeconds: row.duration_seconds,
         }));
-        memoryLogsCache = mapped;
-        return mapped;
+        return { logs: mapped, total: count ?? mapped.length };
       }
     } catch (err) {
       console.error("Failed to fetch activity logs from database:", err);
     }
   }
 
-  return memoryLogsCache.slice(0, limit);
+  // Fallback to memoryLogsCache
+  let filtered = [...memoryLogsCache];
+  if (status && status !== "all") {
+    filtered = filtered.filter((l) => l.status === status);
+  }
+  if (search && search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(
+      (l) =>
+        l.topic?.toLowerCase().includes(q) ||
+        l.customTitle?.toLowerCase().includes(q) ||
+        l.accountName?.toLowerCase().includes(q) ||
+        l.fileId?.toLowerCase().includes(q) ||
+        l.errorMessage?.toLowerCase().includes(q)
+    );
+  }
+  const total = filtered.length;
+  const paginated = filtered.slice(offset, offset + limit);
+  return { logs: paginated, total };
 }
 
 /**

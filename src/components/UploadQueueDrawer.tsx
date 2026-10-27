@@ -51,8 +51,12 @@ export function UploadQueueDrawer({
   currentWatermarkPreset,
   setQueueWatermarkPreset,
 }: UploadQueueDrawerProps) {
+  const [mounted, setMounted] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(true);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -68,7 +72,7 @@ export function UploadQueueDrawer({
     }
   }, []);
 
-  if (queue.length === 0) return null;
+  if (!mounted || queue.length === 0) return null;
 
   const completedCount = queue.filter((i) => i.status === "uploaded").length;
   const isUploading = queue.some((i) => i.status === "uploading");
@@ -228,17 +232,17 @@ export function UploadQueueDrawer({
             <div className="flex items-center gap-1">
               {([
                 { id: "both", label: "✨ Logo & Badge", title: "Embed Logo top-right + Union Education pill badge bottom-left" },
-                { id: "logo", label: "🖼️ Logo", title: "Embed Logo top-right only" },
+                { id: "image", label: "🖼️ Logo", title: "Embed Logo top-right only" },
                 { id: "text", label: "🏷️ Badge", title: "Embed Union Education text badge only" },
                 { id: "none", label: "🚫 None", title: "Fast pass-through without watermark" },
               ] as const).map((wm) => {
-                const active = (currentWatermarkPreset || "both") === wm.id;
+                const active = ((currentWatermarkPreset === "logo" ? "image" : currentWatermarkPreset) || "both") === wm.id;
                 return (
                   <button
                     key={wm.id}
                     type="button"
                     title={wm.title}
-                    onClick={() => setQueueWatermarkPreset(wm.id)}
+                    onClick={() => setQueueWatermarkPreset?.(wm.id)}
                     className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                       active
                         ? "bg-amber-600 text-white shadow-sm"
@@ -281,9 +285,11 @@ export function UploadQueueDrawer({
                     {item.watermark?.type && item.watermark.type !== "none"
                       ? item.watermark.type === "both"
                         ? "✨ WM: Logo+Badge"
-                        : item.watermark.type === "image"
+                        : item.watermark.type === "image" || item.watermark.type === "logo"
                         ? "🖼️ WM: Logo"
-                        : "🏷️ WM: Badge"
+                        : item.watermark.type === "text"
+                        ? "🏷️ WM: Badge"
+                        : "🚫 No WM (Raw)"
                       : (currentWatermarkPreset || "both") !== "none"
                       ? "✨ Auto WM"
                       : "🚫 No WM (Raw)"}
