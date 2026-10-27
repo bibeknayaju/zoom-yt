@@ -548,6 +548,8 @@ export default function ZoomYouTubeDashboardPage() {
 
       if (data.workflowTriggered) {
         alert(`⚡ Enqueued ${recsToEnqueue.length} recording(s)!\n\n🚀 GitHub Actions cloud runner was triggered immediately.`);
+      } else {
+        alert(`⏳ Enqueued ${recsToEnqueue.length} recording(s) in Supabase!\n\nℹ️ Note: To auto-trigger GitHub Actions on click, add GITHUB_PAT to your Vercel Environment Variables. Otherwise, it will process on your daily schedule (7:45 AM / 10:30 PM NPT) or when you click "Run Cloud Runner Now".`);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to queue recordings";
