@@ -469,6 +469,29 @@ export default function ZoomYouTubeDashboardPage() {
 
   const [enqueuingIds, setEnqueuingIds] = useState<Record<string, boolean>>({});
   const [enqueuingAll, setEnqueuingAll] = useState(false);
+  const [triggeringRunner, setTriggeringRunner] = useState(false);
+
+  const handleTriggerCloudRunner = async () => {
+    setTriggeringRunner(true);
+    try {
+      const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Manual trigger from Dashboard UI button" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("🚀 GitHub Actions runner has been triggered!\n\nProcessing all queued recordings in the cloud now. Check the Actions tab in your GitHub repository to view live progress.");
+      } else {
+        alert(data.message || "Failed to trigger runner. Ensure GITHUB_PAT is set in Vercel or trigger manually in GitHub Actions tab.");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to trigger workflow";
+      alert(msg);
+    } finally {
+      setTriggeringRunner(false);
+    }
+  };
 
   const handleEnqueueCloudRecordings = async (
     recsToEnqueue: any[],
@@ -522,6 +545,10 @@ export default function ZoomYouTubeDashboardPage() {
       );
 
       await fetchStatus();
+
+      if (data.workflowTriggered) {
+        alert(`⚡ Enqueued ${recsToEnqueue.length} recording(s)!\n\n🚀 GitHub Actions cloud runner was triggered immediately.`);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to queue recordings";
       alert(msg);
@@ -1373,6 +1400,19 @@ export default function ZoomYouTubeDashboardPage() {
                 <DownloadCloud className="w-4 h-4" />
               )}
               {syncingRecordings ? "Scanning Zoom Cloud..." : "Sync from Zoom Now"}
+            </button>
+
+            <button
+              onClick={handleTriggerCloudRunner}
+              disabled={triggeringRunner}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg shadow-sm transition disabled:opacity-50"
+              title="Immediately triggers the GitHub Actions cloud runner to process all queued videos without waiting for scheduled times">
+              {triggeringRunner ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              ) : (
+                <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+              )}
+              <span>🚀 Run Cloud Runner Now</span>
             </button>
           </div>
         </div>

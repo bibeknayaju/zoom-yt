@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { triggerGitHubWorkflow } from "@/lib/github-actions";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -92,10 +93,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let workflowStatus: { triggered: boolean; message: string } | null = null;
+    if (enqueuedCount > 0) {
+      workflowStatus = await triggerGitHubWorkflow(
+        `Enqueued ${enqueuedCount} recording(s) from Dashboard UI`
+      );
+    }
+
     return NextResponse.json({
       success: true,
       message: `Enqueued ${enqueuedCount} recording(s) for worker processing.`,
       enqueuedCount,
+      workflowTriggered: workflowStatus?.triggered ?? false,
+      workflowMessage: workflowStatus?.message ?? "",
       options,
     });
   } catch (error: unknown) {
