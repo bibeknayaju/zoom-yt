@@ -253,12 +253,12 @@ async function processNextQueueItem() {
 
     const isNoWatermark = !finalWatermark?.type || finalWatermark.type === "none";
 
-    const res = await fetch("/api/zoom-youtube/recordings/process", {
+    const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: currentSignal,
       body: JSON.stringify({
-        recording: nextItem.recording,
+        recordings: [nextItem.recording],
         watermark: finalWatermark,
         watermarkText: (finalWatermark?.type === "image" || finalWatermark?.type === "none") ? "" : (finalWatermark?.text || "Union Education"),
         resolution: isNoWatermark ? "original" : (nextItem.resolution || globalResolution),
@@ -266,62 +266,27 @@ async function processNextQueueItem() {
       }),
     });
 
-    if (!res.ok && !res.headers.get("content-type")?.includes("text/event-stream")) {
-      const errorJson = await res.json().catch(() => ({ error: `Server error ${res.status}` }));
-      throw new Error(errorJson.error || `Failed with status ${res.status}`);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || `Failed with status ${res.status}`);
     }
-
-    let finalResult: any = null;
-    await readSseStream(res, (data) => {
-      if (currentSignal.aborted) return;
-      finalResult = data;
-      if (typeof data.percent === "number") {
-        globalQueue = globalQueue.map((it) =>
-          it.id === fileId && it.status === "uploading"
-            ? {
-                ...it,
-                progressPercent: data.percent,
-                progressMsg: data.msg || it.progressMsg,
-              }
-            : it
-        );
-        notifyListeners();
-      }
-    });
 
     if (currentSignal.aborted) {
       console.log(`⏹️ Task cancelled for ${nextItem.topic}`);
       return;
     }
 
-    if (finalResult?.success) {
-      globalQueue = globalQueue.map((it) =>
-        it.id === fileId
-          ? {
-              ...it,
-              status: "uploaded",
-              progressPercent: 100,
-              youtubeUrl: finalResult.youtubeUrl,
-              progressMsg: `Uploaded! ${finalResult.youtubeUrl}`,
-            }
-          : it
-      );
-      notifyListeners();
-    } else {
-      const errMsg = finalResult?.error || "Upload failed";
-      globalQueue = globalQueue.map((it) =>
-        it.id === fileId
-          ? {
-              ...it,
-              status: "failed",
-              progressPercent: 0,
-              error: errMsg,
-              progressMsg: `Failed: ${errMsg}`,
-            }
-          : it
-      );
-      notifyListeners();
-    }
+    globalQueue = globalQueue.map((it) =>
+      it.id === fileId
+        ? {
+            ...it,
+            status: "queued",
+            progressPercent: 100,
+            progressMsg: "Enqueued for Cloud Runner!",
+          }
+        : it
+    );
+    notifyListeners();
   } catch (err: unknown) {
     if (currentSignal.aborted) {
       console.log(`⏹️ Task cancelled during processing for ${nextItem.topic}`);

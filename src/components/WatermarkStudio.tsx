@@ -25,7 +25,6 @@ import {
   Sparkles,
   Clock,
 } from "lucide-react";
-import { useUploadQueue } from "@/lib/upload-queue-store";
 
 export interface StudioRecording {
   fileId: string;
@@ -209,41 +208,61 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
     }
   };
 
-  const { addToQueue } = useUploadQueue();
+  const [enqueuingCloud, setEnqueuingCloud] = useState(false);
 
-  const handleAddToQueue = () => {
-    addToQueue(
-      {
-        fileId,
-        topic: customTitle.trim() || recording.topic,
-        startTime: recording.startTime || recording.recording_start,
-        downloadUrl: recording.downloadUrl,
-        zoomAccountId: recording.zoomAccountId,
-        customTitle: customTitle.trim() || defaultTitle,
-        customDescription: customDescription.trim(),
-        privacyStatus,
-      },
-      recording.hostName || "Watermark Studio",
-      {
-        resolution: selectedResolution,
-        watermark: {
-          type: watermarkType,
+  const handleAddToQueue = async () => {
+    try {
+      setEnqueuingCloud(true);
+      const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recordings: [
+            {
+              fileId,
+              topic: customTitle.trim() || recording.topic,
+              startTime: recording.startTime || recording.recording_start,
+              downloadUrl: recording.downloadUrl,
+              zoomAccountId: recording.zoomAccountId,
+              customTitle: customTitle.trim() || defaultTitle,
+              customDescription: customDescription.trim(),
+              privacyStatus,
+              fileSizeBytes: recording.fileSizeBytes || recording.file_size_bytes,
+              durationMinutes: recording.durationMinutes || recording.duration_minutes,
+            },
+          ],
           resolution: selectedResolution,
-          logoPath: selectedLogo.path,
-          imageScale,
-          imageOpacity,
-          imagePosX,
-          imagePosY,
-          text: watermarkText,
-          fontSize,
-          textScale,
-          textOpacity,
-          textPosX,
-          textPosY,
-        },
+          watermark: {
+            type: watermarkType,
+            resolution: selectedResolution,
+            logoPath: selectedLogo.path,
+            imageScale,
+            imageOpacity,
+            imagePosX,
+            imagePosY,
+            text: watermarkText,
+            fontSize,
+            textScale,
+            textOpacity,
+            textPosX,
+            textPosY,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to enqueue video");
       }
-    );
-    onClose();
+
+      alert("⚡ Video successfully queued for Cloud Processing!\n\nThe GitHub Actions cloud runner will download, watermark, and upload it to YouTube.");
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to queue video";
+      alert(msg);
+    } finally {
+      setEnqueuingCloud(false);
+    }
   };
 
   // Video stream source URL (plays processed video if watermark done, else raw proxy stream)
@@ -1120,12 +1139,16 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                     <button
                       type="button"
                       onClick={handleAddToQueue}
-                      disabled={watermarkStatus === "rendering"}
-                      className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      title="Send this video with watermark to background queue and close studio">
-                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                      <span className="hidden sm:inline">⚡ Queue in Background</span>
-                      <span className="sm:hidden">Queue</span>
+                      disabled={enqueuingCloud || watermarkStatus === "rendering"}
+                      className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-md"
+                      title="Queue this video with custom watermark settings for GitHub Actions cloud runner">
+                      {enqueuingCloud ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-indigo-200" />
+                      )}
+                      <span className="hidden sm:inline">⚡ Queue for Cloud Upload</span>
+                      <span className="sm:hidden">Queue Cloud</span>
                     </button>
                     <button
                       type="button"

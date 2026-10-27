@@ -177,6 +177,26 @@ export async function GET(req: NextRequest) {
           onConflict: "zoom_file_id",
           ignoreDuplicates: true,
         });
+
+        // Merge latest database status and youtube_url into browsed recordings
+        const fileIds = availableRecordings.map((r) => r.fileId);
+        const { data: dbRecords } = await supabase
+          .from("zy_recordings")
+          .select("zoom_file_id, status, youtube_url")
+          .in("zoom_file_id", fileIds);
+
+        if (dbRecords && dbRecords.length > 0) {
+          const map = new Map(dbRecords.map((d: any) => [d.zoom_file_id, d]));
+          for (const rec of availableRecordings) {
+            const match = map.get(rec.fileId);
+            if (match) {
+              rec.status = match.status;
+              if (match.youtube_url) {
+                rec.youtubeUrl = match.youtube_url;
+              }
+            }
+          }
+        }
       } catch (dbErr) {
         console.warn("Could not auto-cache browsed recordings to DB:", dbErr);
       }

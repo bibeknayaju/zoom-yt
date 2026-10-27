@@ -97,7 +97,7 @@ interface RecordingItem {
   recording_start: string;
   duration_minutes: number;
   file_size_bytes: number;
-  status: "discovered" | "downloading" | "watermarking" | "ready" | "uploading" | "uploaded" | "failed" | "skipped";
+  status: "discovered" | "queued" | "downloading" | "watermarking" | "ready" | "uploading" | "uploaded" | "failed" | "skipped";
   youtube_video_id?: string;
   youtube_url?: string;
   error_message?: string;
@@ -462,12 +462,104 @@ export default function ZoomYouTubeDashboardPage() {
     setQueueResolution,
     currentWatermarkPreset,
     setQueueWatermarkPreset,
-    addToQueue: handleQueueDirectUpload,
-    addAllToQueue: handleQueueAllDirectUpload,
     removeFromQueue: handleRemoveFromQueue,
     retryQueueItem: handleRetryQueueItem,
     clearCompleted: handleClearCompletedQueue,
   } = useUploadQueue(fetchStatus);
+
+  const [enqueuingIds, setEnqueuingIds] = useState<Record<string, boolean>>({});
+  const [enqueuingAll, setEnqueuingAll] = useState(false);
+
+  const handleEnqueueCloudRecordings = async (
+    recsToEnqueue: any[],
+    wmConfig?: any,
+    resolution?: string
+  ) => {
+    if (recsToEnqueue.length === 0) return;
+    const isSingle = recsToEnqueue.length === 1;
+    const singleId = isSingle ? recsToEnqueue[0].fileId || recsToEnqueue[0].zoom_file_id : null;
+    if (singleId) {
+      setEnqueuingIds((prev) => ({ ...prev, [singleId]: true }));
+    } else {
+      setEnqueuingAll(true);
+    }
+
+    try {
+      const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recordings: recsToEnqueue,
+          watermark: wmConfig || (modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" }),
+          resolution: resolution || (modalAutoWatermark ? currentResolution : "original"),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to enqueue recordings");
+      }
+
+      const enqueuedIds = new Set(
+        recsToEnqueue.map((r) => r.fileId || r.zoom_file_id)
+      );
+
+      // Update browsed recordings status locally
+      setBrowsedRecordings((prev) =>
+        prev.map((r) =>
+          enqueuedIds.has(r.fileId || r.zoom_file_id)
+            ? { ...r, status: "queued" }
+            : r
+        )
+      );
+
+      // Also update main dashboard recordings table
+      setRecordings((prev) =>
+        prev.map((r) =>
+          enqueuedIds.has((r as any).zoom_file_id || r.id)
+            ? { ...r, status: "queued" as any }
+            : r
+        )
+      );
+
+      await fetchStatus();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to queue recordings";
+      alert(msg);
+    } finally {
+      if (singleId) {
+        setEnqueuingIds((prev) => ({ ...prev, [singleId]: false }));
+      } else {
+        setEnqueuingAll(false);
+      }
+    }
+  };
+
+  const handleCancelQueuedRecording = async (fileId: string) => {
+    try {
+      await fetch("/api/zoom-youtube/recordings/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
+      setBrowsedRecordings((prev) =>
+        prev.map((r) =>
+          (r.fileId === fileId || r.zoom_file_id === fileId)
+            ? { ...r, status: "discovered" }
+            : r
+        )
+      );
+      setRecordings((prev) =>
+        prev.map((r) =>
+          ((r as any).zoom_file_id === fileId || r.id === fileId)
+            ? { ...r, status: "discovered" as any }
+            : r
+        )
+      );
+      await fetchStatus();
+    } catch (err) {
+      console.warn("Cancel queue error:", err);
+    }
+  };
 
   // Check if any device has storage warnings
   const storageWarnings = devices.filter(
@@ -1032,19 +1124,28 @@ export default function ZoomYouTubeDashboardPage() {
                     </button>
 
                     <button
-                      onClick={() =>
-                        handleQueueAllDirectUpload(
-                          browsedRecordings,
-                          selectedZoomAccountForBrowse.accountName,
-                          {
-                            watermark: modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
-                            resolution: modalAutoWatermark ? currentResolution : "original",
-                          }
-                        )
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shadow-sm transition">
-                      <Youtube className="w-3.5 h-3.5 text-red-600" />
-                      <span>⚡ Direct Upload All ({browsedRecordings.length})</span>
+                      onClick={() => {
+                        const unUploaded = browsedRecordings.filter(
+                          (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued"
+                        );
+                        if (unUploaded.length === 0) {
+                          alert("All recordings are already queued or uploaded!");
+                          return;
+                        }
+                        handleEnqueueCloudRecordings(
+                          unUploaded,
+                          modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
+                          modalAutoWatermark ? currentResolution : "original"
+                        );
+                      }}
+                      disabled={enqueuingAll}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-sm transition disabled:opacity-50">
+                      {enqueuingAll ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                      ) : (
+                        <Youtube className="w-3.5 h-3.5 text-red-600" />
+                      )}
+                      <span>⚡ Queue All for Cloud Upload ({browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})</span>
                     </button>
                   </div>
                 )}
@@ -1111,51 +1212,33 @@ export default function ZoomYouTubeDashboardPage() {
                         </div>
 
                         <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end">
-                          {queueItem ? (
-                            queueItem.status === "uploaded" ? (
-                              <a
-                                href={queueItem.youtubeUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition shadow-sm">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Uploaded (View YT)</span>
-                                <ExternalLink className="w-3 h-3 text-emerald-600" />
-                              </a>
-                            ) : queueItem.status === "uploading" ? (
-                              <div className="flex flex-col items-end gap-1 min-w-[160px]">
-                                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700">
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                                  <span>Direct Uploading ({queueItem.progressPercent || 15}%)</span>
-                                </div>
-                                <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                  <div
-                                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                                    style={{ width: `${queueItem.progressPercent || 15}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : queueItem.status === "failed" ? (
-                              <div className="inline-flex items-center gap-1.5">
-                                <span className="text-xs text-red-600 font-semibold">Failed</span>
-                                <button
-                                  onClick={() => handleRetryQueueItem(rec.fileId)}
-                                  className="px-2.5 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition">
-                                  Retry
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl">
-                                <Clock className="w-3.5 h-3.5 text-amber-600" />
-                                <span>Queued (#{queuePosition})</span>
-                                <button
-                                  onClick={() => handleRemoveFromQueue(rec.fileId)}
-                                  className="text-slate-400 hover:text-red-500 font-bold ml-1 text-sm"
-                                  title="Remove from queue">
-                                  ✕
-                                </button>
-                              </div>
-                            )
+                          {rec.status === "uploaded" || rec.youtubeUrl ? (
+                            <a
+                              href={rec.youtubeUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition shadow-sm">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Uploaded (View YT)</span>
+                              <ExternalLink className="w-3 h-3 text-emerald-600" />
+                            </a>
+                          ) : rec.status === "downloading" || rec.status === "watermarking" || rec.status === "uploading" ? (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                              <span className="capitalize">⚙️ Cloud: {rec.status}...</span>
+                            </div>
+                          ) : rec.status === "queued" ? (
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl">
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
+                              <span>⏳ Queued for Cloud Runner</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCancelQueuedRecording(rec.fileId)}
+                                className="text-slate-400 hover:text-red-500 font-bold ml-1 text-sm"
+                                title="Cancel and unqueue">
+                                ✕
+                              </button>
+                            </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
                               {(() => {
@@ -1163,6 +1246,7 @@ export default function ZoomYouTubeDashboardPage() {
                                   recWatermarkOverrides[rec.fileId] !== undefined
                                     ? recWatermarkOverrides[rec.fileId]
                                     : modalAutoWatermark;
+                                const isEnqueuing = Boolean(enqueuingIds[rec.fileId]);
                                 return (
                                   <>
                                     <button
@@ -1197,19 +1281,22 @@ export default function ZoomYouTubeDashboardPage() {
                                     </button>
 
                                     <button
+                                      type="button"
                                       onClick={() =>
-                                        handleQueueDirectUpload(
-                                          rec,
-                                          selectedZoomAccountForBrowse.accountName,
-                                          {
-                                            watermark: isRowWm ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
-                                            resolution: isRowWm ? currentResolution : "original",
-                                          }
+                                        handleEnqueueCloudRecordings(
+                                          [rec],
+                                          isRowWm ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
+                                          isRowWm ? currentResolution : "original"
                                         )
                                       }
-                                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition hover:scale-[1.02]">
-                                      <Youtube className="w-3.5 h-3.5 text-red-300" />
-                                      <span>Direct Upload to YT</span>
+                                      disabled={isEnqueuing}
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition hover:scale-[1.02] disabled:opacity-50">
+                                      {isEnqueuing ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Youtube className="w-3.5 h-3.5 text-red-300" />
+                                      )}
+                                      <span>⚡ Queue for Cloud Upload</span>
                                     </button>
                                   </>
                                 );
@@ -1292,7 +1379,7 @@ export default function ZoomYouTubeDashboardPage() {
 
         {/* Filter Tabs */}
         <div className="flex flex-wrap items-center gap-2 border-b pb-3">
-          {["all", "discovered", "ready", "uploaded"].map((f) => {
+          {["all", "queued", "discovered", "ready", "uploaded"].map((f) => {
             const count =
               f === "all"
                 ? recordings.length
@@ -1344,6 +1431,7 @@ export default function ZoomYouTubeDashboardPage() {
 
                     const badgeColors: Record<string, string> = {
                       discovered: "bg-amber-50 text-amber-700 border-amber-200",
+                      queued: "bg-blue-50 text-blue-700 border-blue-200 font-bold",
                       downloading: "bg-blue-50 text-blue-700 border-blue-200 animate-pulse",
                       watermarking: "bg-purple-50 text-purple-700 border-purple-200",
                       ready: "bg-cyan-50 text-cyan-700 border-cyan-200",
@@ -1397,8 +1485,37 @@ export default function ZoomYouTubeDashboardPage() {
                               <Play className="w-3.5 h-3.5 fill-current" />
                               Watch
                             </a>
+                          ) : rec.status === "queued" ? (
+                            <div className="inline-flex items-center gap-2">
+                              <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                                ⏳ Queued for Cloud
+                              </span>
+                              <button
+                                onClick={() => handleCancelQueuedRecording((rec as any).zoom_file_id || rec.id)}
+                                className="text-xs text-red-600 hover:text-red-800 font-medium transition">
+                                Cancel
+                              </button>
+                            </div>
                           ) : rec.status === "discovered" || rec.status === "ready" ? (
                             <div className="inline-flex items-center gap-2">
+                              <button
+                                onClick={() =>
+                                  handleEnqueueCloudRecordings([
+                                    {
+                                      fileId: (rec as any).zoom_file_id || rec.id,
+                                      topic: rec.topic,
+                                      downloadUrl: (rec as any).download_url || (rec as any).downloadUrl,
+                                      zoomAccountId: (rec as any).zoom_account_id || (rec as any).zoomAccountId || zoomAccounts[0]?.id,
+                                      startTime: rec.recording_start,
+                                      fileSizeBytes: rec.file_size_bytes,
+                                      durationMinutes: rec.duration_minutes,
+                                    },
+                                  ])
+                                }
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1 rounded-md transition shadow-sm">
+                                <Youtube className="w-3 h-3 text-red-300" />
+                                Queue for Cloud
+                              </button>
                               <button
                                 onClick={() => {
                                   const sel = {
@@ -1415,16 +1532,10 @@ export default function ZoomYouTubeDashboardPage() {
                                   } catch {}
                                   router.push("/dashboard/studio");
                                 }}
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-md transition">
-                                <Sparkles className="w-3 h-3 text-red-500" />
-                                Open Studio &rarr;
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-2 py-1 rounded-md transition">
+                                <Sparkles className="w-3 h-3 text-amber-500" />
+                                Studio
                               </button>
-                              <button
-                                onClick={() => handleUpdateRecordingStatus(rec.id, rec.status === "ready" ? "discovered" : "ready")}
-                                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition">
-                                {rec.status === "ready" ? "Unready" : "Ready"}
-                              </button>
-                              <span className="text-slate-300">|</span>
                               <button
                                 onClick={() => handleUpdateRecordingStatus(rec.id, "skipped")}
                                 className="text-xs text-slate-400 hover:text-slate-600 transition">

@@ -40,11 +40,13 @@ export function getSafeTempDir(): string {
     return path.resolve(process.env.LOCAL_TEMP_DIR);
   }
   // In Vercel or AWS Lambda, process.cwd() (/var/task) is read-only
-  if (
-    process.env.VERCEL ||
-    process.env.AWS_LAMBDA_FUNCTION_NAME ||
-    process.cwd().startsWith("/var/task")
-  ) {
+  const isServerless =
+    Boolean(process.env.VERCEL) ||
+    Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+    Boolean(process.env.LAMBDA_TASK_ROOT) ||
+    (typeof process.cwd === "function" && (process.cwd().includes("var/task") || process.cwd() === "/"));
+
+  if (isServerless) {
     return path.join(os.tmpdir(), "zoomyt-tmp");
   }
   return path.join(process.cwd(), ".zoomyt-tmp");
