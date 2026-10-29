@@ -81,6 +81,9 @@ export interface DirectUploadQueueItem {
   resolution?: VideoResolution;
   watermark?: any;
   retryCount?: number;
+  // Items queued directly into Supabase (processed by the laptop/cloud worker)
+  serverManaged?: boolean;
+  serverTarget?: "local" | "cloud";
 }
 
 // Global in-memory queue shared across client-side page transitions
@@ -91,6 +94,7 @@ let isProcessing = false;
 let activeAbortController: AbortController | null = null;
 let activeProcessingFileId: string | null = null;
 const listeners = new Set<() => void>();
+const dismissedServerIds = new Set<string>();
 
 
 // Initialize from localStorage if in browser
@@ -141,7 +145,7 @@ if (typeof window !== "undefined") {
       return it;
     });
     notifyListeners();
-    if (!isProcessing && globalQueue.some((i) => i.status === "queued")) {
+    if (!isProcessing && globalQueue.some((i) => i.status === "queued" && !i.serverManaged)) {
       processNextQueueItem();
     }
   });
@@ -172,6 +176,237 @@ function notifyListeners() {
     } catch {}
   }
 }
+
+function mapServerStatus(status?: string): DirectUploadQueueItem["status"] | null {
+  switch (status) {
+    case "queued":
+      return "queued";
+    case "downloading":
+    case "watermarking":
+    case "uploading":
+    case "ready":
+      return "uploading";
+    case "uploaded":
+      return "uploaded";
+    case "failed":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+function serverStatusMessage(status: string | undefined, target: "local" | "cloud") {
+  const where = target === "local" ? "local laptop" : "GitHub Cloud";
+  switch (status) {
+    case "downloading":
+      return `Downloading on ${where}...`;
+    case "watermarking":
+      return `Watermarking on ${where}...`;
+    case "uploading":
+      return `Uploading to YouTube from ${where}...`;
+    case "ready":
+      return `Ready on ${where}...`;
+    case "uploaded":
+      return "Uploaded to YouTube";
+    case "failed":
+      return "Processing failed";
+    default:
+      return `Queued for ${where}`;
+  }
+}
+
+/**
+ * Adds server-side queued jobs (Supabase `zy_recordings`) to the shared queue UI
+ * so the bottom-right popup appears without starting the legacy direct-upload flow.
+ */
+export function trackServerQueueItems(
+  recs: any[],
+  target: "local" | "cloud",
+  forcedStatus?: string
+) {
+  const updates = new Map<string, DirectUploadQueueItem>();
+  const additions: DirectUploadQueueItem[] = [];
+
+  for (const rec of recs) {
+    const fileId = rec.fileId || rec.zoom_file_id;
+    if (!fileId) continue;
+
+    const rawStatus = forcedStatus || rec.status || "queued";
+    const status = mapServerStatus(rawStatus);
+    if (!status) continue;
+
+    // A dismissed job only comes back when it is explicitly re-queued.
+    if (dismissedServerIds.has(fileId) && rawStatus !== "queued") continue;
+    if (rawStatus === "queued") dismissedServerIds.delete(fileId);
+
+    const existing = globalQueue.find((i) => i.id === fileId);
+    const base: DirectUploadQueueItem =
+      existing || {
+        id: fileId,
+        recording: rec,
+        accountName: rec.accountName || "Zoom Account",
+        topic: rec.topic || "Class Recording",
+        startTime: rec.startTime || rec.recording_start || new Date().toISOString(),
+        durationMinutes: rec.durationMinutes || rec.duration_minutes || 0,
+        fileSizeBytes: rec.fileSizeBytes || rec.file_size_bytes || 0,
+        status: "queued",
+        queuedAt: Date.now(),
+      };
+
+    const updated: DirectUploadQueueItem = {
+      ...base,
+      recording: base.recording || rec,
+      status,
+      serverManaged: true,
+      serverTarget: target,
+      progressMsg: serverStatusMessage(rawStatus, target),
+      youtubeUrl: rec.youtubeUrl || rec.youtube_url || base.youtubeUrl,
+      error: status === "failed" ? rec.error_message || rec.error || "Processing failed" : undefined,
+    };
+
+    if (existing) updates.set(fileId, updated);
+    else additions.push(updated);
+  }
+
+  if (updates.size === 0 && additions.length === 0) return;
+
+  globalQueue = globalQueue
+    .map((item) => updates.get(item.id) || item)
+    .concat(additions);
+  notifyListeners();
+}
+
+/** Refreshes statuses of server-managed items from the recordings poll. */
+export function syncServerQueueStatuses(recordings: any[]) {
+  if (!globalQueue.some((i) => i.serverManaged)) return;
+
+  const byId = new Map(
+    recordings.map((r) => [r.zoom_file_id || r.id, r] as [string, any])
+  );
+  let changed = false;
+
+  const next = globalQueue.map((item) => {
+    if (!item.serverManaged) return item;
+    const rec = byId.get(item.id);
+    if (!rec) return item;
+
+    const status = mapServerStatus(rec.status);
+    if (!status) return item;
+
+    const target = item.serverTarget || "cloud";
+    const youtubeUrl = rec.youtube_url || rec.youtubeUrl || item.youtubeUrl;
+    const error = status === "failed" ? rec.error_message || item.error : undefined;
+
+    if (status === item.status && youtubeUrl === item.youtubeUrl && error === item.error) {
+      return item;
+    }
+
+    changed = true;
+    return {
+      ...item,
+      status,
+      progressMsg: serverStatusMessage(rec.status, target),
+      youtubeUrl,
+      error,
+    };
+  });
+
+  if (changed) {
+    globalQueue = next;
+    notifyListeners();
+  }
+}
+
+/**
+ * Mirrors activity logs into the corner popup. This covers jobs started outside
+ * the dashboard (worker / Watermark Studio) that never went through the enqueue UI.
+ */
+export function syncServerQueueFromActivity(
+  logs: any[],
+  target: "local" | "cloud"
+) {
+  if (!Array.isArray(logs) || logs.length === 0) return;
+
+  const byFile = new Map<string, any>();
+  for (const log of logs) {
+    if (log?.fileId) byFile.set(log.fileId, log);
+  }
+
+  const updates = new Map<string, DirectUploadQueueItem>();
+  const additions: DirectUploadQueueItem[] = [];
+
+  for (const log of logs) {
+    const fileId = log?.fileId;
+    if (!fileId || log.status !== "processing") continue;
+    if (dismissedServerIds.has(fileId)) continue;
+
+    const existing = globalQueue.find((i) => i.id === fileId);
+    if (existing?.status === "uploaded") continue;
+
+    const base: DirectUploadQueueItem =
+      existing || {
+        id: fileId,
+        recording: { fileId, topic: log.topic },
+        accountName: log.accountName || "Zoom Account",
+        topic: log.topic || "Class Recording",
+        startTime: log.startedAt || new Date().toISOString(),
+        durationMinutes: log.durationMinutes || 0,
+        fileSizeBytes: log.fileSizeBytes || 0,
+        status: "uploading",
+        queuedAt: Date.now(),
+      };
+
+    const updated: DirectUploadQueueItem = {
+      ...base,
+      status: "uploading",
+      serverManaged: true,
+      serverTarget: target,
+      progressMsg: `Processing & uploading${target === "local" ? " on local laptop" : " on GitHub Cloud"}...`,
+    };
+
+    if (existing) updates.set(fileId, updated);
+    else additions.push(updated);
+  }
+
+  let changed = additions.length > 0 || updates.size > 0;
+
+  const next = globalQueue.map((item) => {
+    if (!item.serverManaged) return item;
+    const log = byFile.get(item.id);
+    if (!log) return item;
+
+    if (log.status === "success") {
+      changed = true;
+      return {
+        ...item,
+        status: "uploaded" as const,
+        youtubeUrl: log.youtubeUrl || item.youtubeUrl,
+        progressMsg: "Uploaded to YouTube",
+        error: undefined,
+      };
+    }
+    if (log.status === "failed") {
+      changed = true;
+      return {
+        ...item,
+        status: "failed" as const,
+        error: log.errorMessage || item.error || "Processing failed",
+        progressMsg: "Processing failed",
+      };
+    }
+    return updates.get(item.id) || item;
+  });
+
+  const existingIds = new Set(next.map((i) => i.id));
+  const newItems = additions.filter((i) => !existingIds.has(i.id));
+  if (newItems.length > 0) changed = true;
+
+  if (changed) {
+    globalQueue = next.concat(newItems);
+    notifyListeners();
+  }
+}
+
 
 async function readSseStream(
   res: Response,
@@ -224,7 +459,7 @@ async function readSseStream(
 async function processNextQueueItem() {
   if (isProcessing) return;
 
-  const nextItem = globalQueue.find((i) => i.status === "queued");
+  const nextItem = globalQueue.find((i) => i.status === "queued" && !i.serverManaged);
   if (!nextItem) return;
 
   isProcessing = true;
@@ -253,12 +488,12 @@ async function processNextQueueItem() {
 
     const isNoWatermark = !finalWatermark?.type || finalWatermark.type === "none";
 
-    const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+    const res = await fetch("/api/zoom-youtube/recordings/process", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: currentSignal,
       body: JSON.stringify({
-        recordings: [nextItem.recording],
+        recording: nextItem.recording,
         watermark: finalWatermark,
         watermarkText: (finalWatermark?.type === "image" || finalWatermark?.type === "none") ? "" : (finalWatermark?.text || "Union Education"),
         resolution: isNoWatermark ? "original" : (nextItem.resolution || globalResolution),
@@ -266,27 +501,62 @@ async function processNextQueueItem() {
       }),
     });
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || `Failed with status ${res.status}`);
+    if (!res.ok && !res.headers.get("content-type")?.includes("text/event-stream")) {
+      const errorJson = await res.json().catch(() => ({ error: `Server error ${res.status}` }));
+      throw new Error(errorJson.error || `Failed with status ${res.status}`);
     }
+
+    let finalResult: any = null;
+    await readSseStream(res, (data) => {
+      if (currentSignal.aborted) return;
+      finalResult = data;
+      if (typeof data.percent === "number") {
+        globalQueue = globalQueue.map((it) =>
+          it.id === fileId && it.status === "uploading"
+            ? {
+                ...it,
+                progressPercent: data.percent,
+                progressMsg: data.msg || it.progressMsg,
+              }
+            : it
+        );
+        notifyListeners();
+      }
+    });
 
     if (currentSignal.aborted) {
       console.log(`⏹️ Task cancelled for ${nextItem.topic}`);
       return;
     }
 
-    globalQueue = globalQueue.map((it) =>
-      it.id === fileId
-        ? {
-            ...it,
-            status: "queued",
-            progressPercent: 100,
-            progressMsg: "Enqueued for Cloud Runner!",
-          }
-        : it
-    );
-    notifyListeners();
+    if (finalResult?.success) {
+      globalQueue = globalQueue.map((it) =>
+        it.id === fileId
+          ? {
+              ...it,
+              status: "uploaded",
+              progressPercent: 100,
+              youtubeUrl: finalResult.youtubeUrl,
+              progressMsg: `Uploaded! ${finalResult.youtubeUrl}`,
+            }
+          : it
+      );
+      notifyListeners();
+    } else {
+      const errMsg = finalResult?.error || "Upload failed";
+      globalQueue = globalQueue.map((it) =>
+        it.id === fileId
+          ? {
+              ...it,
+              status: "failed",
+              progressPercent: 0,
+              error: errMsg,
+              progressMsg: `Failed: ${errMsg}`,
+            }
+          : it
+      );
+      notifyListeners();
+    }
   } catch (err: unknown) {
     if (currentSignal.aborted) {
       console.log(`⏹️ Task cancelled during processing for ${nextItem.topic}`);
@@ -336,7 +606,7 @@ async function processNextQueueItem() {
     }
     isProcessing = false;
     setTimeout(() => {
-      const hasMore = globalQueue.some((i) => i.status === "queued");
+      const hasMore = globalQueue.some((i) => i.status === "queued" && !i.serverManaged);
       if (hasMore && !isProcessing) {
         processNextQueueItem();
       }
@@ -349,6 +619,8 @@ async function processNextQueueItem() {
  * Aborts client stream, notifies backend to terminate ffmpeg/downloads, and deletes from queue.
  */
 export function cancelQueueItem(fileId: string, deletePermanently = true) {
+  const queuedItem = globalQueue.find((i) => i.id === fileId);
+
   if (activeProcessingFileId === fileId) {
     if (activeAbortController) {
       try { activeAbortController.abort(); } catch {}
@@ -356,6 +628,13 @@ export function cancelQueueItem(fileId: string, deletePermanently = true) {
     activeAbortController = null;
     activeProcessingFileId = null;
 
+    fetch("/api/zoom-youtube/recordings/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileId }),
+    }).catch(() => {});
+  } else if (queuedItem?.serverManaged) {
+    dismissedServerIds.add(fileId);
     fetch("/api/zoom-youtube/recordings/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -383,7 +662,7 @@ export function cancelQueueItem(fileId: string, deletePermanently = true) {
   notifyListeners();
 
   setTimeout(() => {
-    if (!isProcessing && globalQueue.some((i) => i.status === "queued")) {
+    if (!isProcessing && globalQueue.some((i) => i.status === "queued" && !i.serverManaged)) {
       processNextQueueItem();
     }
   }, 400);
@@ -467,7 +746,7 @@ export function useUploadQueue(onItemComplete?: () => void) {
     listeners.add(listener);
 
     // Start processing if items queued and not currently active
-    if (!isProcessing && globalQueue.some((i) => i.status === "queued")) {
+    if (!isProcessing && globalQueue.some((i) => i.status === "queued" && !i.serverManaged)) {
       processNextQueueItem();
     }
 
@@ -602,6 +881,43 @@ export function useUploadQueue(onItemComplete?: () => void) {
   }, []);
 
   const retryQueueItem = useCallback((fileId: string) => {
+    const item = globalQueue.find((i) => i.id === fileId);
+
+    if (item?.serverManaged) {
+      const target = item.serverTarget || "cloud";
+      dismissedServerIds.delete(fileId);
+      globalQueue = globalQueue.map((it) =>
+        it.id === fileId
+          ? { ...it, status: "queued", error: undefined, progressMsg: `Re-queueing for ${target === "local" ? "local laptop" : "GitHub Cloud"}...` }
+          : it
+      );
+      notifyListeners();
+
+      fetch("/api/zoom-youtube/recordings/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recordings: [item.recording], target }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data?.success) throw new Error(data?.error || "Failed to re-queue recording");
+          globalQueue = globalQueue.map((it) =>
+            it.id === fileId
+              ? { ...it, status: "queued", progressMsg: `Queued for ${target === "local" ? "local laptop" : "GitHub Cloud"}` }
+              : it
+          );
+          notifyListeners();
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : "Failed to re-queue recording";
+          globalQueue = globalQueue.map((it) =>
+            it.id === fileId ? { ...it, status: "failed", error: msg } : it
+          );
+          notifyListeners();
+        });
+      return;
+    }
+
     globalQueue = globalQueue.map((it) =>
       it.id === fileId
         ? { ...it, status: "queued", error: undefined, progressPercent: 0, progressMsg: "Retrying in queue..." }
@@ -616,6 +932,10 @@ export function useUploadQueue(onItemComplete?: () => void) {
   const clearCompleted = useCallback(() => {
     globalQueue = globalQueue.filter((i) => i.status === "queued" || i.status === "uploading");
     notifyListeners();
+  }, []);
+
+  const handleStartDirectProcessing = useCallback((fileId?: string) => {
+    startDirectProcessing(fileId);
   }, []);
 
   return {
@@ -634,7 +954,40 @@ export function useUploadQueue(onItemComplete?: () => void) {
     cancelQueueItem: cancelTask,
     retryQueueItem,
     clearCompleted,
+    startDirectProcessing: handleStartDirectProcessing,
   };
+}
+
+export function startDirectProcessing(fileId?: string) {
+  dismissedServerIds.clear();
+  if (fileId) {
+    globalQueue = globalQueue.map((it) =>
+      it.id === fileId
+        ? {
+            ...it,
+            serverManaged: false,
+            status: "queued" as const,
+            progressPercent: 0,
+            progressMsg: "Starting stream processing...",
+          }
+        : it
+    );
+  } else {
+    globalQueue = globalQueue.map((it) =>
+      it.status === "queued"
+        ? {
+            ...it,
+            serverManaged: false,
+            progressPercent: 0,
+            progressMsg: "Starting stream processing...",
+          }
+        : it
+    );
+  }
+  notifyListeners();
+  if (!isProcessing) {
+    processNextQueueItem();
+  }
 }
 
 export async function enqueueRecordingsForWorker(

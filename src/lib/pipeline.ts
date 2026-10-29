@@ -100,7 +100,8 @@ export async function getVideoMetadata(filePath: string): Promise<VideoMetadata>
     const isNetwork = filePath.startsWith("http://") || filePath.startsWith("https://");
     const netFlags = isNetwork ? "-reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 " : "";
     const { stdout } = await execAsync(
-      `ffprobe -v error ${netFlags}-select_streams v:0 -show_entries stream=width,height,duration -show_entries format=duration -of json "${filePath}"`
+      `ffprobe -v error ${netFlags}-select_streams v:0 -show_entries stream=width,height,duration -show_entries format=duration -of json "${filePath}"`,
+      { timeout: 15000 }
     );
     const parsed = JSON.parse(stdout);
     const stream = parsed?.streams?.[0];
@@ -112,6 +113,60 @@ export async function getVideoMetadata(filePath: string): Promise<VideoMetadata>
     return { width, height, duration };
   } catch {
     return { width: 1280, height: 720, duration: 0 };
+  }
+}
+
+/**
+ * Resolves the authenticated Zoom cloud recording download URL to its direct presigned CDN/S3 URL.
+ * Zoom requires 'Authorization: Bearer <token>' and responds with a 302 redirect to a seekable presigned
+ * MP4 URL (CloudFront/S3/SSR) which ffmpeg/ffprobe can stream and watermark frame-by-frame directly over HTTP.
+ */
+export async function getDirectStreamUrl(downloadUrl: string, accessToken: string): Promise<string> {
+  if (
+    downloadUrl.includes("ssrweb.zoom.us") ||
+    downloadUrl.includes("s3.amazonaws.com") ||
+    downloadUrl.includes("cloudfront.net")
+  ) {
+    return downloadUrl;
+  }
+
+  try {
+    const res = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      redirect: "manual",
+    });
+
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get("location");
+      if (location) {
+        return location;
+      }
+    }
+
+    if (res.ok) {
+      return res.url || downloadUrl;
+    }
+
+    // Try HEAD with follow redirect to get final destination URL
+    const headRes = await fetch(downloadUrl, {
+      method: "HEAD",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      redirect: "follow",
+    });
+    if (headRes.ok && headRes.url) {
+      return headRes.url;
+    }
+  } catch (err: any) {
+    console.warn("⚠️ Failed to resolve presigned direct stream URL:", err?.message || err);
+  }
+
+  // Fallback to query parameter if redirect resolution wasn't successful
+  try {
+    const urlObj = new URL(downloadUrl);
+    urlObj.searchParams.set("access_token", accessToken);
+    return urlObj.toString();
+  } catch {
+    return downloadUrl;
   }
 }
 
@@ -568,7 +623,8 @@ export async function watermarkVideo(
   options: WatermarkOptions = {},
   onProgress?: (info: WatermarkProgressInfo) => void,
   abortSignal?: AbortSignal,
-  onProcessSpawn?: (proc: ChildProcess) => void
+  onProcessSpawn?: (proc: ChildProcess) => void,
+  fallbackDurationSeconds = 0
 ): Promise<void> {
   if (abortSignal?.aborted) {
     throw new Error("Operation cancelled by user");
@@ -582,7 +638,7 @@ export async function watermarkVideo(
   const meta = await getVideoMetadata(inputPath);
   const inWidth = meta.width;
   const inHeight = meta.height;
-  const totalDuration = meta.duration;
+  const totalDuration = meta.duration > 0 ? meta.duration : (fallbackDurationSeconds > 0 ? fallbackDurationSeconds : 0);
   console.log(`🎬 Input video: ${inWidth}x${inHeight}, duration: ${totalDuration}s`);
 
   const shouldScaleVideo = Boolean(targetHeight && inHeight > targetHeight);
@@ -626,6 +682,8 @@ export async function watermarkVideo(
       "fast_bilinear",
       "-c:a",
       "copy",
+      "-movflags",
+      "+faststart",
       outputPath,
     ];
     try {
@@ -654,6 +712,8 @@ export async function watermarkVideo(
           "0",
           "-c:a",
           "copy",
+          "-movflags",
+          "+faststart",
           outputPath,
         ];
         await runFfmpegWithLiveProgress(fallbackArgs, totalDuration, onProgress, abortSignal, onProcessSpawn);
@@ -737,6 +797,8 @@ export async function watermarkVideo(
       "fast_bilinear",
       "-c:a",
       "copy",
+      "-movflags",
+      "+faststart",
       outputPath,
     ];
 
@@ -767,6 +829,8 @@ export async function watermarkVideo(
           "0",
           "-c:a",
           "copy",
+          "-movflags",
+          "+faststart",
           outputPath,
         ];
         await runFfmpegWithLiveProgress(fallbackArgs, totalDuration, onProgress, abortSignal, onProcessSpawn);
@@ -975,9 +1039,9 @@ export async function processRecordingEndToEnd(
   const supabase = getSupabase();
 
   try {
-    const storage = await checkDeviceStorage({ targetDir: tempDir, criticalThresholdGB: 5 });
+    const storage = await checkDeviceStorage({ targetDir: tempDir, criticalThresholdGB: 2 });
     if (storage.status === "critical") {
-      throw new Error(`Device storage critical: only ${storage.freeGB} GB free. Processing paused.`);
+      throw new Error(`Device storage critical: only ${storage.freeGB} GB free. Need at least 2 GB.`);
     }
 
     if (effectiveSignal.aborted) {
@@ -1004,6 +1068,7 @@ export async function processRecordingEndToEnd(
     let uploadFilePath = rawPath;
     const hasWatermark = Boolean(watermarkOpts.type && watermarkOpts.type !== "none");
     const needsProcessing = hasWatermark;
+    const fallbackDuration = (options.durationMinutes || 0) * 60;
 
     if (needsProcessing) {
       if (supabase) {
@@ -1017,30 +1082,38 @@ export async function processRecordingEndToEnd(
       console.log(`\n========================================`);
       console.log(`▶ Starting Simultaneous Stream Processing for: ${options.meetingTopic}`);
       console.log(`========================================`);
-      console.log(`🎨 Stream Watermark Mode (Watermark: ${watermarkOpts.type}, Res: ${watermarkOpts.resolution})...`);
+      console.log(`🎨 Auto Watermark Mode (Type: ${watermarkOpts.type}, Res: ${watermarkOpts.resolution})...`);
 
-      const streamUrlObj = new URL(options.downloadUrl);
-      streamUrlObj.searchParams.set("access_token", options.zoomAccessToken);
-      const streamInputUrl = streamUrlObj.toString();
+      const resLabel = watermarkOpts.resolution && watermarkOpts.resolution !== "original" ? ` (${watermarkOpts.resolution})` : "";
 
       try {
-        const resLabel = watermarkOpts.resolution && watermarkOpts.resolution !== "original" ? ` (${watermarkOpts.resolution})` : "";
-        console.log(`⚡ Streaming from Zoom & applying watermark${resLabel} simultaneously...`);
-        await watermarkVideo(streamInputUrl, procPath, watermarkOpts, (prog) => {
-          const mappedPct = Math.round((prog.percent / 100) * 80);
-          onProgress?.({
-            percent: mappedPct,
-            stage: "watermarking",
-            message: `Streaming & applying watermark${resLabel}: ${prog.message}`,
-          });
-        }, effectiveSignal, onProcessSpawn);
+        console.log(`🔗 Resolving authenticated Zoom direct stream URL...`);
+        const streamInputUrl = await getDirectStreamUrl(options.downloadUrl, options.zoomAccessToken);
+        console.log(`⚡ Streaming from Zoom & watermarking simultaneously (per frame / per byte)...`);
+
+        await watermarkVideo(
+          streamInputUrl,
+          procPath,
+          watermarkOpts,
+          (prog) => {
+            const mappedPct = Math.round((prog.percent / 100) * 80);
+            onProgress?.({
+              percent: mappedPct,
+              stage: "watermarking",
+              message: `Streaming & watermarking (per frame/per byte)${resLabel}: ${prog.message}`,
+            });
+          },
+          effectiveSignal,
+          onProcessSpawn,
+          fallbackDuration
+        );
         console.log(`✅ Simultaneous stream processing complete!`);
         uploadFilePath = procPath;
-      } catch (streamErr) {
+      } catch (streamErr: any) {
         if (effectiveSignal.aborted) {
           throw new Error("Operation cancelled by user");
         }
-        console.warn(`⚠️ Direct stream processing encountered an issue, falling back to download first:`, streamErr);
+        console.warn(`⚠️ Direct stream processing encountered an issue, falling back to download first:`, streamErr?.message || streamErr);
         console.log(`⬇️ Downloading from Zoom (fallback)...`);
         await downloadZoomVideo(options.downloadUrl, options.zoomAccessToken, rawPath, (bytes, total, etaMsg) => {
           const mb = Math.round(bytes / (1024 * 1024));
@@ -1060,15 +1133,22 @@ export async function processRecordingEndToEnd(
           throw new Error("Operation cancelled by user");
         }
 
-        const resLabel = watermarkOpts.resolution && watermarkOpts.resolution !== "original" ? ` (${watermarkOpts.resolution})` : "";
-        await watermarkVideo(rawPath, procPath, watermarkOpts, (prog) => {
-          const mappedPct = 40 + Math.round((prog.percent / 100) * 40);
-          onProgress?.({
-            percent: mappedPct,
-            stage: "watermarking",
-            message: `Applying watermark${resLabel}: ${prog.message}`,
-          });
-        }, effectiveSignal, onProcessSpawn);
+        await watermarkVideo(
+          rawPath,
+          procPath,
+          watermarkOpts,
+          (prog) => {
+            const mappedPct = 40 + Math.round((prog.percent / 100) * 40);
+            onProgress?.({
+              percent: mappedPct,
+              stage: "watermarking",
+              message: `Applying watermark${resLabel}: ${prog.message}`,
+            });
+          },
+          effectiveSignal,
+          onProcessSpawn,
+          fallbackDuration
+        );
         uploadFilePath = procPath;
         await fsp.unlink(rawPath).catch(() => {});
       }

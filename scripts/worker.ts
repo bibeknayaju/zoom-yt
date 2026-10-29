@@ -88,13 +88,33 @@ async function loadDefaultSettings() {
   }
 }
 
+// Poll the job row so a cancel from the dashboard (which resets it to
+// "discovered") can abort the ffmpeg/upload running in this process.
+function watchForCancellation(jobId: string, controller: AbortController) {
+  const timer = setInterval(async () => {
+    try {
+      const { data } = await supabase
+        .from("zy_recordings")
+        .select("status")
+        .eq("id", jobId)
+        .maybeSingle();
+      const status = data?.status;
+      if (status && ["discovered", "cancelled", "skipped"].includes(status)) {
+        console.log(`\n🛑 [Worker] Cancel requested for ${jobId} (status: ${status}). Aborting...`);
+        controller.abort();
+      }
+    } catch {}
+  }, 2000);
+  return () => clearInterval(timer);
+}
+
 // Main Polling Loop
 async function pollAndExecute() {
   // Initial storage check
-  const storage = await checkDeviceStorage({ criticalThresholdGB: 5 });
+  const storage = await checkDeviceStorage({ criticalThresholdGB: 2 });
   console.log(`💾 Free Disk Space: ${storage.freeGB} GB (${storage.status.toUpperCase()})`);
   if (storage.status === "critical") {
-    console.error(`🚨 [Worker] Disk space critical (<10GB). Please clear space in .zoomyt-tmp before running jobs.`);
+    console.error(`🚨 [Worker] Disk space critical (<2GB). Please clear space before running jobs.`);
   }
 
   // First Heartbeat
@@ -102,14 +122,38 @@ async function pollAndExecute() {
   const heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
 
   while (isRunning) {
+    let stopCancelWatch: (() => void) | null = null;
     try {
-      // 1. Atomically Claim Job from Database (ONLY explicitly queued tasks, never auto-process 'discovered')
-      const { data: candidateJobs, error: selectErr } = await supabase
+      // Never claim a job while the disk is too full — leave it queued instead of failing it.
+      const liveStorage = await checkDeviceStorage({ criticalThresholdGB: 2 });
+      if (liveStorage.status === "critical") {
+        console.warn(
+          `⏸️ [Worker] Low disk space: ${liveStorage.freeGB} GB free (need at least 2 GB). Waiting for space...`
+        );
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        continue;
+      }
+
+      // 1. Atomically Claim Job from Database (ONLY explicitly queued tasks for this laptop, never auto-process 'discovered')
+      let { data: candidateJobs, error: selectErr } = await supabase
         .from("zy_recordings")
         .select("*")
         .eq("status", "queued")
+        .eq("processing_target", "local")
         .order("recording_start", { ascending: true })
         .limit(1);
+
+      // Gracefully handle databases without the processing_target column yet.
+      if (selectErr && /processing_target/i.test(selectErr.message)) {
+        const retry = await supabase
+          .from("zy_recordings")
+          .select("*")
+          .eq("status", "queued")
+          .order("recording_start", { ascending: true })
+          .limit(1);
+        candidateJobs = retry.data;
+        selectErr = retry.error;
+      }
 
       if (selectErr) {
         console.error("❌ [Worker] Error checking queue:", selectErr.message);
@@ -149,6 +193,7 @@ async function pollAndExecute() {
       // 2. Active Job Found!
       isJobActive = true;
       currentAbortController = new AbortController();
+      stopCancelWatch = watchForCancellation(job.id, currentAbortController);
 
       console.log(`\n=======================================================`);
       console.log(`📥 [Worker] Claimed Recording: "${job.topic}"`);
@@ -234,6 +279,7 @@ async function pollAndExecute() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\n❌ [Worker] Error processing job: ${msg}`);
     } finally {
+      if (stopCancelWatch) stopCancelWatch();
       isJobActive = false;
       currentAbortController = null;
     }

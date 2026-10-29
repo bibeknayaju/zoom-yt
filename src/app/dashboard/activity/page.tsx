@@ -82,6 +82,7 @@ export default function ActivityLogsPage() {
     removeFromQueue: handleRemoveFromQueue,
     retryQueueItem: handleRetryQueueItem,
     clearCompleted: handleClearCompletedQueue,
+    startDirectProcessing: handleStartDirectProcessing,
   } = useUploadQueue();
 
   // Fetch paginated logs
@@ -557,6 +558,7 @@ export default function ActivityLogsPage() {
         clearCompleted={handleClearCompletedQueue}
         retryQueueItem={handleRetryQueueItem}
         removeFromQueue={handleRemoveFromQueue}
+        startDirectProcessing={handleStartDirectProcessing}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
         currentWatermarkPreset={currentWatermarkPreset}

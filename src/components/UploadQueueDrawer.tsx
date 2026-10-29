@@ -15,6 +15,9 @@ import {
   Sparkles,
   X,
   Minimize2,
+  Play,
+  Laptop,
+  Cloud,
 } from "lucide-react";
 import {
   DirectUploadQueueItem,
@@ -31,6 +34,11 @@ interface UploadQueueDrawerProps {
   removeFromQueue: (id: string) => void;
   cancelTask?: (id: string) => void;
   cancelAll?: () => void;
+  startDirectProcessing?: (id?: string) => void;
+  onTriggerCloudRunner?: () => Promise<void>;
+  isTriggeringRunner?: boolean;
+  processingTarget?: "local" | "cloud";
+  setProcessingTarget?: (target: "local" | "cloud") => void;
   currentResolution?: VideoResolution;
   setQueueResolution?: (res: VideoResolution) => void;
   currentWatermarkPreset?: WatermarkPreset;
@@ -46,6 +54,11 @@ export function UploadQueueDrawer({
   removeFromQueue,
   cancelTask,
   cancelAll,
+  startDirectProcessing,
+  onTriggerCloudRunner,
+  isTriggeringRunner,
+  processingTarget,
+  setProcessingTarget,
   currentResolution,
   setQueueResolution,
   currentWatermarkPreset,
@@ -142,6 +155,30 @@ export function UploadQueueDrawer({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {queuedCount > 0 && processingTarget === "cloud" && onTriggerCloudRunner ? (
+            <button
+              type="button"
+              onClick={() => onTriggerCloudRunner()}
+              disabled={isTriggeringRunner}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white px-2.5 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-sm transition disabled:opacity-50"
+              title="Run batch GitHub Actions runner now for all queued videos">
+              {isTriggeringRunner ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Cloud className="w-3 h-3" />
+              )}
+              <span>Run Cloud ({queuedCount})</span>
+            </button>
+          ) : queuedCount > 0 && startDirectProcessing ? (
+            <button
+              type="button"
+              onClick={() => startDirectProcessing()}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-white px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 shadow-sm transition"
+              title="Start downloading, watermarking, and uploading all queued items in browser now">
+              <Play className="w-2.5 h-2.5 fill-current" />
+              <span>Start All</span>
+            </button>
+          ) : null}
           {(isUploading || queuedCount > 0) && (
             <button
               type="button"
@@ -255,6 +292,39 @@ export function UploadQueueDrawer({
             </div>
           </div>
         )}
+
+        {/* Processing Target preset */}
+        {processingTarget && setProcessingTarget && (
+          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+            <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+              Target Runner:
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setProcessingTarget("local")}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                  processingTarget === "local"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                }`}>
+                <Laptop className="w-3 h-3" />
+                <span>Laptop</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProcessingTarget("cloud")}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                  processingTarget === "cloud"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                }`}>
+                <Cloud className="w-3 h-3" />
+                <span>GitHub Workflow</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Drawer Items List */}
@@ -323,7 +393,7 @@ export function UploadQueueDrawer({
                   <div className="flex items-center gap-1.5">
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg animate-pulse">
                       <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                      <span>{item.progressPercent || 15}%</span>
+                      <span>{item.progressPercent ? `${item.progressPercent}%` : (item.serverManaged ? (item.serverTarget === "local" ? "Laptop" : "Cloud") : "Streaming...")}</span>
                     </span>
                     <button
                       type="button"
@@ -355,8 +425,18 @@ export function UploadQueueDrawer({
                   <div className="flex items-center gap-1">
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
                       <Clock className="w-3 h-3 text-amber-600" />
-                      <span>Queued</span>
+                      <span>{item.serverManaged ? `Queued · ${item.serverTarget === "local" ? "Laptop" : "Cloud"}` : "Queued"}</span>
                     </span>
+                    {startDirectProcessing && (
+                      <button
+                        type="button"
+                        onClick={() => startDirectProcessing(item.id)}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition shadow-xs"
+                        title="Start downloading & watermarking right now in browser">
+                        <Play className="w-2.5 h-2.5 fill-current" />
+                        <span>Start</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeFromQueue(item.id)}
@@ -374,7 +454,7 @@ export function UploadQueueDrawer({
                 <div className="flex items-center justify-between text-[10px] text-blue-700 font-medium">
                   <span className="truncate">{item.progressMsg || "Processing & uploading..."}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="font-mono font-bold">{item.progressPercent || 15}%</span>
+                    <span className="font-mono font-bold">{item.progressPercent || 0}%</span>
                     <button
                       type="button"
                       onClick={() => (cancelTask ? cancelTask(item.id) : removeFromQueue(item.id))}
@@ -386,7 +466,24 @@ export function UploadQueueDrawer({
                 <div className="w-full bg-blue-100 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-                    style={{ width: `${item.progressPercent || 15}%` }}
+                    style={{ width: `${Math.max(item.progressPercent || 0, 5)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {item.status === "queued" && (
+              <div className="space-y-1 mt-2 pt-1.5 border-t border-slate-100">
+                <div className="flex items-center justify-between text-[10px] text-amber-700 font-medium">
+                  <span className="truncate">{item.progressMsg || "Queued (ready to stream)..."}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-mono font-semibold text-slate-400">0%</span>
+                  </div>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-amber-400 h-1.5 rounded-full"
+                    style={{ width: "0%" }}
                   />
                 </div>
               </div>

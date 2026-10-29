@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS public.zy_recordings (
   download_url TEXT,
   status TEXT DEFAULT 'discovered',
   -- States: 'discovered' -> 'downloading' -> 'watermarking' -> 'ready' -> 'uploading' -> 'uploaded' | 'failed' | 'skipped'
+  -- Where the job should run: 'local' (laptop worker) | 'cloud' (GitHub Actions runner)
+  processing_target TEXT DEFAULT 'cloud',
   claimed_by TEXT REFERENCES public.zy_worker_nodes(node_id) ON DELETE SET NULL,
   lease_expires_at TIMESTAMPTZ,
   attempts INT DEFAULT 0,
@@ -137,6 +139,7 @@ CREATE TABLE IF NOT EXISTS public.zy_events (
 
 -- Indexes for lightning fast lookups & job queueing
 CREATE INDEX IF NOT EXISTS idx_zy_rec_status ON public.zy_recordings(status);
+CREATE INDEX IF NOT EXISTS idx_zy_rec_target ON public.zy_recordings(processing_target);
 CREATE INDEX IF NOT EXISTS idx_zy_rec_lease ON public.zy_recordings(lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_zy_rec_start ON public.zy_recordings(recording_start DESC);
 CREATE INDEX IF NOT EXISTS idx_zy_act_created ON public.zy_activity_logs(created_at DESC);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Youtube } from "@/components/icons/Youtube";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Pagination } from "@/components/Pagination";
 import {
   History,
   CheckCircle2,
@@ -57,6 +58,8 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
   const [clearing, setClearing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed" | "processing">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(true);
@@ -146,6 +149,18 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
       );
     });
   }, [logs, statusFilter, searchQuery]);
+
+  const changeStatusFilter = (value: "all" | "success" | "failed" | "processing") => {
+    setStatusFilter(value);
+    setCurrentPage(1);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedLogs = filteredLogs.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize
+  );
 
   const counts = useMemo(() => {
     return {
@@ -266,7 +281,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
       {/* Summary KPI Badges */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div
-          onClick={() => setStatusFilter("all")}
+          onClick={() => changeStatusFilter("all")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "all"
               ? "bg-slate-900 text-white border-slate-900 shadow-sm"
@@ -280,7 +295,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
         </div>
 
         <div
-          onClick={() => setStatusFilter("success")}
+          onClick={() => changeStatusFilter("success")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "success"
               ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
@@ -294,7 +309,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
         </div>
 
         <div
-          onClick={() => setStatusFilter("failed")}
+          onClick={() => changeStatusFilter("failed")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "failed"
               ? "bg-rose-600 text-white border-rose-600 shadow-sm"
@@ -308,7 +323,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
         </div>
 
         <div
-          onClick={() => setStatusFilter("processing")}
+          onClick={() => changeStatusFilter("processing")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "processing"
               ? "bg-blue-600 text-white border-blue-600 shadow-sm"
@@ -330,12 +345,18 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
             type="text"
             placeholder="Search by meeting title, account name, YouTube link, or error..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50/50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition"
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => {
+                setSearchQuery("");
+                setCurrentPage(1);
+              }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600">
               ✕
             </button>
@@ -371,7 +392,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredLogs.map((log) => {
+              {pagedLogs.map((log) => {
                 const isExpanded = expandedLogId === log.id;
                 const isSuccess = log.status === "success";
                 const isFailed = log.status === "failed";
@@ -599,6 +620,22 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {filteredLogs.length > 0 && (
+        <Pagination
+          currentPage={safePage}
+          totalPages={totalPages}
+          totalItems={filteredLogs.length}
+          pageSize={pageSize}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setCurrentPage(1);
+          }}
+          itemLabel="logs"
+        />
       )}
     </div>
   );

@@ -26,15 +26,19 @@ import {
   Sparkles,
   ChevronUp,
   ChevronDown,
+  Cloud,
+  X,
+  Info,
 } from "lucide-react";
 import { Youtube } from "@/components/icons/Youtube";
 import { useUser } from "@clerk/nextjs";
 import { Navbar } from "@/components/Navbar";
 import { AutoWatermarkTemplateModal } from "@/components/AutoWatermarkTemplateModal";
 import { WatermarkStudio } from "@/components/WatermarkStudio";
-import { useUploadQueue, DirectUploadQueueItem, buildWatermarkConfig } from "@/lib/upload-queue-store";
+import { useUploadQueue, DirectUploadQueueItem, buildWatermarkConfig, trackServerQueueItems, syncServerQueueStatuses, syncServerQueueFromActivity } from "@/lib/upload-queue-store";
 import { UploadQueueDrawer } from "@/components/UploadQueueDrawer";
 import { ActivityLogsSection } from "@/components/ActivityLogsSection";
+import { Pagination } from "@/components/Pagination";
 
 
 interface StorageInfo {
@@ -90,6 +94,8 @@ interface ZoomAccount {
   createdAt: string;
 }
 
+type ProcessingTarget = "local" | "cloud";
+
 interface RecordingItem {
   id: string;
   topic: string;
@@ -103,8 +109,30 @@ interface RecordingItem {
   error_message?: string;
 }
 
+interface ToastItem {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  title: string;
+  message?: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
 export default function ZoomYouTubeDashboardPage() {
   const router = useRouter();
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const showToast = useCallback((toast: Omit<ToastItem, "id">) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((prev) => [...prev, { ...toast, id }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 7000);
+  }, []);
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
   const [primaryNodeId, setPrimaryNodeId] = useState<string | null>(null);
   const [ytStatus, setYtStatus] = useState<YouTubeStatus | null>(null);
@@ -112,6 +140,8 @@ export default function ZoomYouTubeDashboardPage() {
   const [recordings, setRecordings] = useState<RecordingItem[]>([]);
   const [syncingRecordings, setSyncingRecordings] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [recordingsPage, setRecordingsPage] = useState(1);
+  const [recordingsPageSize, setRecordingsPageSize] = useState(10);
   const [showAddZoom, setShowAddZoom] = useState(false);
   const [newZoom, setNewZoom] = useState({
     accountName: "",
@@ -134,16 +164,83 @@ export default function ZoomYouTubeDashboardPage() {
   const [modalAutoWatermark, setModalAutoWatermark] = useState(true);
   const [recWatermarkOverrides, setRecWatermarkOverrides] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [processingTarget, setProcessingTarget] = useState<ProcessingTarget>("cloud");
+  const [localWorkerRunning, setLocalWorkerRunning] = useState(false);
+  const [workerBusy, setWorkerBusy] = useState(false);
+  const [workerMsg, setWorkerMsg] = useState<string | null>(null);
+
+  const fetchWorkerStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/zoom-youtube/worker", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (data?.success) setLocalWorkerRunning(Boolean(data.running));
+    } catch {}
+  }, []);
+
+  const handleToggleLocalWorker = useCallback(
+    async (action: "start" | "stop") => {
+      setWorkerBusy(true);
+      setWorkerMsg(null);
+      try {
+        const res = await fetch("/api/zoom-youtube/worker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        const data = await res.json().catch(() => null);
+        if (data?.success) {
+          setLocalWorkerRunning(action === "start" ? Boolean(data.started) || localWorkerRunning : false);
+          setWorkerMsg(data.message || null);
+        } else {
+          setWorkerMsg(data?.error || "Failed to control the local worker.");
+        }
+      } catch (err: unknown) {
+        setWorkerMsg(err instanceof Error ? err.message : "Failed to control the local worker.");
+      } finally {
+        setWorkerBusy(false);
+        fetchWorkerStatus();
+      }
+    },
+    [fetchWorkerStatus, localWorkerRunning]
+  );
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("zoomyt_processing_target");
+      if (saved === "local" || saved === "cloud") setProcessingTarget(saved);
+    } catch {}
+    fetchWorkerStatus();
+  }, [fetchWorkerStatus]);
+
+  // Local Laptop turns on `npm run worker`; GitHub Cloud turns it back off.
+  useEffect(() => {
+    if (processingTarget === "local") {
+      void handleToggleLocalWorker("start");
+    } else if (localWorkerRunning) {
+      void handleToggleLocalWorker("stop");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processingTarget]);
+
+  const handleSetProcessingTarget = (target: ProcessingTarget) => {
+    setProcessingTarget(target);
+    try {
+      localStorage.setItem("zoomyt_processing_target", target);
+    } catch {}
+  };
+
+  const targetShort = processingTarget === "local" ? "Laptop" : "GitHub Workflow";
 
   const fetchStatus = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [devRes, ytRes, zoomRes, recRes] = await Promise.all([
+      const [devRes, ytRes, zoomRes, recRes, actRes] = await Promise.all([
         fetch("/api/zoom-youtube/devices"),
         fetch("/api/zoom-youtube/youtube/status"),
         fetch("/api/zoom-youtube/zoom/accounts"),
         fetch("/api/zoom-youtube/recordings"),
+        fetch("/api/zoom-youtube/activity-logs?limit=50"),
       ]);
 
       const devData = devRes.ok ? await devRes.json().catch(() => null) : null;
@@ -166,9 +263,30 @@ export default function ZoomYouTubeDashboardPage() {
         setZoomAccounts(zoomData.accounts || []);
       }
 
+      let queueTarget: ProcessingTarget = "cloud";
+      try {
+        if (localStorage.getItem("zoomyt_processing_target") === "local") queueTarget = "local";
+      } catch {}
+
       const recData = recRes.ok ? await recRes.json().catch(() => null) : null;
       if (recData?.success) {
-        setRecordings(recData.recordings || []);
+        const list = recData.recordings || [];
+        setRecordings(list);
+        syncServerQueueStatuses(list);
+
+        // Surface jobs already queued on the server (e.g. after a page reload).
+        const activeServerJobs = list.filter((r: RecordingItem) =>
+          ["queued", "downloading", "watermarking", "uploading", "ready"].includes(r.status)
+        );
+        if (activeServerJobs.length > 0) {
+          trackServerQueueItems(activeServerJobs, queueTarget);
+        }
+      }
+
+      // Also surface jobs that are processing but were started outside the enqueue UI.
+      const actData = actRes.ok ? await actRes.json().catch(() => null) : null;
+      if (actData?.success && Array.isArray(actData.logs)) {
+        syncServerQueueFromActivity(actData.logs, queueTarget);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Network error";
@@ -462,9 +580,11 @@ export default function ZoomYouTubeDashboardPage() {
     setQueueResolution,
     currentWatermarkPreset,
     setQueueWatermarkPreset,
+    addToQueue,
     removeFromQueue: handleRemoveFromQueue,
     retryQueueItem: handleRetryQueueItem,
     clearCompleted: handleClearCompletedQueue,
+    startDirectProcessing: handleStartDirectProcessing,
   } = useUploadQueue(fetchStatus);
 
   const [enqueuingIds, setEnqueuingIds] = useState<Record<string, boolean>>({});
@@ -477,17 +597,34 @@ export default function ZoomYouTubeDashboardPage() {
       const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "Manual trigger from Dashboard UI button" }),
+        body: JSON.stringify({ reason: "Manual batch trigger from Dashboard UI" }),
       });
       const data = await res.json();
       if (data.success) {
-        alert("🚀 GitHub Actions runner has been triggered!\n\nProcessing all queued recordings in the cloud now. Check the Actions tab in your GitHub repository to view live progress.");
+        showToast({
+          type: "success",
+          title: "🚀 Cloud Runner Dispatched!",
+          message: "GitHub Actions runner is booting up now. It will process all queued videos sequentially in a single runner run.",
+          action: {
+            label: "View Live Runs ↗",
+            onClick: () => window.open("https://github.com/bibeknayaju/zoom-yt/actions", "_blank"),
+          },
+        });
+        await fetchStatus();
       } else {
-        alert(data.message || "Failed to trigger runner. Ensure GITHUB_PAT is set in Vercel or trigger manually in GitHub Actions tab.");
+        showToast({
+          type: "error",
+          title: "Cloud Runner Dispatch Failed",
+          message: data.message || "Ensure your GITHUB_PAT has Actions Read/Write permissions.",
+        });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to trigger workflow";
-      alert(msg);
+      showToast({
+        type: "error",
+        title: "Connection Error",
+        message: msg,
+      });
     } finally {
       setTriggeringRunner(false);
     }
@@ -515,6 +652,7 @@ export default function ZoomYouTubeDashboardPage() {
           recordings: recsToEnqueue,
           watermark: wmConfig || (modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" }),
           resolution: resolution || (modalAutoWatermark ? currentResolution : "original"),
+          target: processingTarget,
         }),
       });
       const data = await res.json();
@@ -546,14 +684,47 @@ export default function ZoomYouTubeDashboardPage() {
 
       await fetchStatus();
 
-      if (data.workflowTriggered) {
-        alert(`⚡ Enqueued ${recsToEnqueue.length} recording(s)!\n\n🚀 GitHub Actions cloud runner was triggered immediately.`);
+      if (processingTarget === "local") {
+        void handleToggleLocalWorker("start");
+
+        for (const rec of recsToEnqueue) {
+          addToQueue(
+            rec,
+            rec.accountName || "Zoom Account",
+            {
+              watermark: wmConfig || (modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" }),
+              resolution: (resolution as any) || (modalAutoWatermark ? currentResolution : "original"),
+            }
+          );
+        }
+        setQueueDrawerOpen(true);
+        showToast({
+          type: "success",
+          title: `⚡ Started ${recsToEnqueue.length} Task${recsToEnqueue.length > 1 ? "s" : ""} on Laptop`,
+          message: "Live stream downloading, watermarking per-frame, and YouTube upload underway.",
+        });
       } else {
-        alert(`⏳ Enqueued ${recsToEnqueue.length} recording(s) in Supabase!\n\nℹ️ Note: To auto-trigger GitHub Actions on click, add GITHUB_PAT to your Vercel Environment Variables. Otherwise, it will process on your daily schedule (7:45 AM / 10:30 PM NPT) or when you click "Run Cloud Runner Now".`);
+        trackServerQueueItems(recsToEnqueue, "cloud", "queued");
+        setQueueDrawerOpen(true);
+
+        const totalWaiting = recordings.filter((r) => r.status === "queued").length + recsToEnqueue.length;
+        showToast({
+          type: "info",
+          title: `☁️ Queued ${recsToEnqueue.length} Video${recsToEnqueue.length > 1 ? "s" : ""} for Cloud Runner`,
+          message: `${totalWaiting} video${totalWaiting === 1 ? "" : "s"} ready in backlog. Click "Run Cloud Runner" to process all at once.`,
+          action: {
+            label: "Run Now 🚀",
+            onClick: handleTriggerCloudRunner,
+          },
+        });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to queue recordings";
-      alert(msg);
+      showToast({
+        type: "error",
+        title: "Queueing Failed",
+        message: msg,
+      });
     } finally {
       if (singleId) {
         setEnqueuingIds((prev) => ({ ...prev, [singleId]: false }));
@@ -595,6 +766,31 @@ export default function ZoomYouTubeDashboardPage() {
     (d) => d.system?.storage?.status === "warning" || d.system?.storage?.status === "critical",
   );
 
+  const localWorkersOnline = devices.filter(
+    (d) => d.isOnline && !d.nodeId.startsWith("github-runner"),
+  );
+
+  const cloudWorkersOnline = devices.filter(
+    (d) => d.isOnline && (d.nodeId.startsWith("github-runner") || d.label.toLowerCase().includes("cloud")),
+  );
+
+  const queuedCloudRecordings = recordings.filter(
+    (r) => r.status === "queued",
+  );
+
+  const filteredRecordings = recordings.filter(
+    (r) => statusFilter === "all" || r.status === statusFilter,
+  );
+  const recordingsTotalPages = Math.max(
+    1,
+    Math.ceil(filteredRecordings.length / recordingsPageSize),
+  );
+  const safeRecordingsPage = Math.min(recordingsPage, recordingsTotalPages);
+  const pagedRecordings = filteredRecordings.slice(
+    (safeRecordingsPage - 1) * recordingsPageSize,
+    safeRecordingsPage * recordingsPageSize,
+  );
+
   const { user } = useUser();
   const userRole = (user?.publicMetadata?.role as string) === "admin" ? "admin" : "user";
 
@@ -616,7 +812,33 @@ export default function ZoomYouTubeDashboardPage() {
               Browse Zoom cloud recordings, launch Watermark Studio, or run high-speed YouTube uploads.
             </p>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Target Toggle: Local Laptop vs GitHub Workflow */}
+            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-700/80 shadow-sm">
+              <button
+                type="button"
+                onClick={() => handleSetProcessingTarget("local")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  processingTarget === "local"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}>
+                <Laptop className="w-3.5 h-3.5" />
+                <span>Local Laptop</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetProcessingTarget("cloud")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  processingTarget === "cloud"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}>
+                <Cloud className="w-3.5 h-3.5" />
+                <span>GitHub Workflow</span>
+              </button>
+            </div>
+
             <button
               onClick={() => setShowTemplateModal(true)}
               className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-amber-300 bg-amber-950/40 border border-amber-700/60 rounded-xl hover:bg-amber-900/50 hover:border-amber-600 transition shadow-sm">
@@ -632,6 +854,199 @@ export default function ZoomYouTubeDashboardPage() {
             </button>
           </div>
         </div>
+
+      {/* Processing Location Selector */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+              <Cloud className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Processing Location</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Choose where queued recordings are downloaded, watermarked, and uploaded.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full lg:w-auto">
+            <button
+              type="button"
+              onClick={() => handleSetProcessingTarget("local")}
+              className={`relative text-left rounded-xl border p-3.5 transition ${
+                processingTarget === "local"
+                  ? "border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/60"
+                  : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+              }`}>
+              <div className="flex items-center gap-2">
+                <Laptop className={`w-4 h-4 ${processingTarget === "local" ? "text-indigo-600" : "text-slate-500"}`} />
+                <span className="text-sm font-bold text-slate-900">Local Laptop</span>
+                {processingTarget === "local" && (
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600 ml-auto" />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Tasks begin immediately on this local machine with hardware-accelerated watermarking.
+              </p>
+              <span
+                className={`inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border ${
+                  localWorkersOnline.length > 0
+                    ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                    : "text-amber-700 bg-amber-50 border-amber-200"
+                }`}>
+                <Radio className="w-2.5 h-2.5" />
+                {localWorkersOnline.length > 0
+                  ? `${localWorkersOnline.length} laptop${localWorkersOnline.length > 1 ? "s" : ""} online`
+                  : "No laptop online"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSetProcessingTarget("cloud")}
+              className={`relative text-left rounded-xl border p-3.5 transition ${
+                processingTarget === "cloud"
+                  ? "border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/60"
+                  : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+              }`}>
+              <div className="flex items-center gap-2">
+                <Cloud className={`w-4 h-4 ${processingTarget === "cloud" ? "text-indigo-600" : "text-slate-500"}`} />
+                <span className="text-sm font-bold text-slate-900">GitHub Workflow</span>
+                {processingTarget === "cloud" && (
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600 ml-auto" />
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Queue all videos into database backlog, then trigger one GitHub run to process all at once.
+              </p>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border text-purple-700 bg-purple-50 border-purple-200">
+                <Cloud className="w-2.5 h-2.5" />
+                Cloud Batch Runner
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {processingTarget === "cloud" && (
+          <div className="mt-4 rounded-xl border border-purple-200/90 bg-gradient-to-r from-purple-50/80 via-indigo-50/40 to-slate-50/50 p-4 shadow-xs space-y-3.5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={`inline-flex items-center gap-1.5 font-bold text-xs px-2.5 py-0.5 rounded-full border ${
+                      cloudWorkersOnline.length > 0
+                        ? "text-emerald-700 bg-emerald-50 border-emerald-300 shadow-xs animate-pulse"
+                        : "text-slate-700 bg-white border-slate-300"
+                    }`}>
+                    <Radio className={`w-3 h-3 ${cloudWorkersOnline.length > 0 ? "text-emerald-600" : "text-slate-400"}`} />
+                    {cloudWorkersOnline.length > 0
+                      ? `🟢 Cloud Runner Active (${cloudWorkersOnline[0].label})`
+                      : "💤 Cloud Runner Idle (Ready for batch run)"}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                    <Clock className="w-3 h-3 text-purple-600" />
+                    <span>
+                      {queuedCloudRecordings.length} video{queuedCloudRecordings.length === 1 ? "" : "s"} waiting in cloud queue
+                    </span>
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 max-w-2xl">
+                  Add all ~12 of your daily class recordings to the queue first. Then click <strong>Run Cloud Runner Now</strong> once — GitHub Actions boots a 4-core runner to stream, watermark, and upload all queued videos sequentially in a single run.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleTriggerCloudRunner}
+                  disabled={triggeringRunner}
+                  className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 ${
+                    queuedCloudRecordings.length > 0
+                      ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 ring-2 ring-purple-300"
+                      : "bg-slate-800 hover:bg-slate-700"
+                  }`}>
+                  {triggeringRunner ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  ) : (
+                    <Cloud className="w-4 h-4 text-purple-200" />
+                  )}
+                  <span>
+                    {triggeringRunner
+                      ? "Dispatching Workflow..."
+                      : queuedCloudRecordings.length > 0
+                      ? `🚀 Run Cloud Runner Now (${queuedCloudRecordings.length} queued)`
+                      : "🚀 Run Cloud Runner Now"}
+                  </span>
+                </button>
+
+                <a
+                  href="https://github.com/bibeknayaju/zoom-yt/actions"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition shadow-xs"
+                  title="Open GitHub Actions workflows tab in a new window">
+                  <span>View Live Runs</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                </a>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-purple-100 flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-purple-600" />
+                <span>Automated batch schedule: <strong>7:45 AM & 10:30 PM NPT</strong> daily (automatically drains backlog)</span>
+              </span>
+              <span className="text-slate-400">Single runner execution • Zero rate-limit waste</span>
+            </div>
+          </div>
+        )}
+
+        {processingTarget === "local" && (
+          <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              <span
+                className={`inline-flex items-center gap-1.5 font-semibold px-2 py-0.5 rounded-full border ${
+                  localWorkerRunning
+                    ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                    : "text-slate-600 bg-slate-100 border-slate-200"
+                }`}>
+                <Radio className={`w-2.5 h-2.5 ${localWorkerRunning ? "animate-pulse text-emerald-600" : ""}`} />
+                npm run worker: {localWorkerRunning ? "Running" : "Stopped"}
+              </span>
+              <span className="text-slate-500">
+                {workerMsg || "Local worker picks up recordings targeted at this laptop."}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleToggleLocalWorker(localWorkerRunning ? "stop" : "start")}
+              disabled={workerBusy}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border shadow-sm transition disabled:opacity-50 self-start sm:self-auto ${
+                localWorkerRunning
+                  ? "text-rose-700 bg-white border-rose-200 hover:bg-rose-50"
+                  : "text-white bg-indigo-600 border-indigo-600 hover:bg-indigo-700"
+              }`}>
+              {workerBusy ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : localWorkerRunning ? (
+                <span className="w-3 h-3 rounded-sm bg-rose-500" />
+              ) : (
+                <Play className="w-3 h-3 fill-current" />
+              )}
+              {workerBusy ? "Working..." : localWorkerRunning ? "Stop Worker" : "Start npm run worker"}
+            </button>
+          </div>
+        )}
+
+        {processingTarget === "local" && localWorkersOnline.length === 0 && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-3">
+            ⚠️ No local laptop worker is online yet. It may take a few seconds to register after starting. If it still doesn&apos;t appear, run <code className="font-semibold">npm run worker</code> manually, or switch to GitHub Cloud.
+          </p>
+        )}
+      </div>
 
       {/* Critical / Warning Storage Banner */}
       {storageWarnings.length > 0 && (
@@ -1118,7 +1533,35 @@ export default function ZoomYouTubeDashboardPage() {
 
               <div className="flex items-center gap-2">
                 {browsedRecordings.length > 0 && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Target Toggle: Local Laptop vs GitHub Workflow */}
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleSetProcessingTarget("local")}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-bold transition ${
+                          processingTarget === "local"
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                        title="Run task immediately on local laptop">
+                        <Laptop className="w-3.5 h-3.5" />
+                        <span>Laptop</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetProcessingTarget("cloud")}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-bold transition ${
+                          processingTarget === "cloud"
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                        title="Automatically trigger GitHub Actions workflow in cloud">
+                        <Cloud className="w-3.5 h-3.5" />
+                        <span>GitHub Workflow</span>
+                      </button>
+                    </div>
+
                     <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
                       {(["720p", "1080p", "480p"] as const).map((q) => (
                         <button
@@ -1147,7 +1590,7 @@ export default function ZoomYouTubeDashboardPage() {
                           ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
                           : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
                       }`}
-                      title={modalAutoWatermark ? "Auto-Watermark is ON for direct uploads. Click to turn OFF." : "Auto-Watermark is OFF (Raw Upload). Click to turn ON."}>
+                      title={modalAutoWatermark ? "Auto-Watermark is ON: Downloads & watermarks simultaneously per frame/per byte on the fly. Click to turn OFF." : "Auto-Watermark is OFF (Raw Upload). Click to turn ON."}>
                       <Sparkles className={`w-3.5 h-3.5 ${modalAutoWatermark ? "text-amber-600" : "text-slate-400"}`} />
                       <span>{modalAutoWatermark ? "Auto WM: ON" : "No WM (Raw)"}</span>
                     </button>
@@ -1158,7 +1601,11 @@ export default function ZoomYouTubeDashboardPage() {
                           (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued"
                         );
                         if (unUploaded.length === 0) {
-                          alert("All recordings are already queued or uploaded!");
+                          showToast({
+                            type: "info",
+                            title: "Queue Up to Date",
+                            message: "All recordings in this list are already queued or uploaded!",
+                          });
                           return;
                         }
                         handleEnqueueCloudRecordings(
@@ -1168,13 +1615,19 @@ export default function ZoomYouTubeDashboardPage() {
                         );
                       }}
                       disabled={enqueuingAll}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-sm transition disabled:opacity-50">
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 border border-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50">
                       {enqueuingAll ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : processingTarget === "local" ? (
+                        <Laptop className="w-3.5 h-3.5" />
                       ) : (
-                        <Youtube className="w-3.5 h-3.5 text-red-600" />
+                        <Cloud className="w-3.5 h-3.5" />
                       )}
-                      <span>⚡ Queue All for Cloud Upload ({browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})</span>
+                      <span>
+                        {processingTarget === "local"
+                          ? `⚡ Start All on Laptop (${browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})`
+                          : `☁️ Queue All for Cloud (${browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})`}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1259,7 +1712,7 @@ export default function ZoomYouTubeDashboardPage() {
                           ) : rec.status === "queued" ? (
                             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl">
                               <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>⏳ Queued for Cloud Runner</span>
+                              <span>⏳ Queued for {processingTarget === "local" ? "Local Worker" : "Cloud Runner"}</span>
                               <button
                                 type="button"
                                 onClick={() => handleCancelQueuedRecording(rec.fileId)}
@@ -1293,8 +1746,8 @@ export default function ZoomYouTubeDashboardPage() {
                                       }`}
                                       title={
                                         isRowWm
-                                          ? "Watermarking is enabled for this video. Click to upload raw."
-                                          : "Watermarking is disabled. Click to enable Auto Watermark."
+                                          ? "Auto-Watermark is enabled: Downloads & watermarks on the fly per frame/byte. Click to upload raw."
+                                          : "Watermarking is disabled (Raw). Click to enable Auto Watermark."
                                       }>
                                       {isRowWm ? (
                                         <>
@@ -1322,10 +1775,14 @@ export default function ZoomYouTubeDashboardPage() {
                                       className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition hover:scale-[1.02] disabled:opacity-50">
                                       {isEnqueuing ? (
                                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : processingTarget === "local" ? (
+                                        <Laptop className="w-3.5 h-3.5 text-indigo-200" />
                                       ) : (
-                                        <Youtube className="w-3.5 h-3.5 text-red-300" />
+                                        <Cloud className="w-3.5 h-3.5 text-indigo-200" />
                                       )}
-                                      <span>⚡ Queue for Cloud Upload</span>
+                                      <span>
+                                        {processingTarget === "local" ? "⚡ Start on Laptop" : "☁️ Queue for Cloud"}
+                                      </span>
                                     </button>
                                   </>
                                 );
@@ -1430,7 +1887,10 @@ export default function ZoomYouTubeDashboardPage() {
             return (
               <button
                 key={f}
-                onClick={() => setStatusFilter(f)}
+                onClick={() => {
+                  setStatusFilter(f);
+                  setRecordingsPage(1);
+                }}
                 className={`px-3 py-1 text-xs font-medium rounded-lg capitalize transition ${
                   active
                     ? "bg-slate-900 text-white"
@@ -1465,8 +1925,7 @@ export default function ZoomYouTubeDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {recordings
-                  .filter((r) => statusFilter === "all" || r.status === statusFilter)
+                {pagedRecordings
                   .map((rec) => {
                     const toMB = (bytes: number) =>
                       bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "-";
@@ -1530,7 +1989,7 @@ export default function ZoomYouTubeDashboardPage() {
                           ) : rec.status === "queued" ? (
                             <div className="inline-flex items-center gap-2">
                               <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                                ⏳ Queued for Cloud
+                                ⏳ Queued for {processingTarget === "local" ? "Local" : "Cloud"}
                               </span>
                               <button
                                 onClick={() => handleCancelQueuedRecording((rec as any).zoom_file_id || rec.id)}
@@ -1551,12 +2010,14 @@ export default function ZoomYouTubeDashboardPage() {
                                       startTime: rec.recording_start,
                                       fileSizeBytes: rec.file_size_bytes,
                                       durationMinutes: rec.duration_minutes,
+                                      meetingUuid: (rec as any).zoom_meeting_uuid,
+                                      meetingId: (rec as any).zoom_meeting_id,
                                     },
                                   ])
                                 }
                                 className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1 rounded-md transition shadow-sm">
                                 <Youtube className="w-3 h-3 text-red-300" />
-                                Queue for Cloud
+                                Queue for {targetShort}
                               </button>
                               <button
                                 onClick={() => {
@@ -1568,6 +2029,8 @@ export default function ZoomYouTubeDashboardPage() {
                                     startTime: rec.recording_start,
                                     fileSizeBytes: rec.file_size_bytes,
                                     durationMinutes: rec.duration_minutes,
+                                    meetingUuid: (rec as any).zoom_meeting_uuid,
+                                    meetingId: (rec as any).zoom_meeting_id,
                                   };
                                   try {
                                     sessionStorage.setItem("zoomyt_selected_recording", JSON.stringify(sel));
@@ -1582,6 +2045,39 @@ export default function ZoomYouTubeDashboardPage() {
                                 onClick={() => handleUpdateRecordingStatus(rec.id, "skipped")}
                                 className="text-xs text-slate-400 hover:text-slate-600 transition">
                                 Skip
+                              </button>
+                            </div>
+                          ) : rec.status === "failed" ? (
+                            <div className="inline-flex items-center gap-2">
+                              <span
+                                title={rec.error_message || "Processing failed"}
+                                className="text-[10px] text-rose-600 max-w-[180px] truncate">
+                                {rec.error_message || "Processing failed"}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  handleEnqueueCloudRecordings([
+                                    {
+                                      fileId: (rec as any).zoom_file_id || rec.id,
+                                      topic: rec.topic,
+                                      downloadUrl: (rec as any).download_url || (rec as any).downloadUrl,
+                                      zoomAccountId: (rec as any).zoom_account_id || (rec as any).zoomAccountId || zoomAccounts[0]?.id,
+                                      startTime: rec.recording_start,
+                                      fileSizeBytes: rec.file_size_bytes,
+                                      durationMinutes: rec.duration_minutes,
+                                      meetingUuid: (rec as any).zoom_meeting_uuid,
+                                      meetingId: (rec as any).zoom_meeting_id,
+                                    },
+                                  ])
+                                }
+                                disabled={Boolean(enqueuingIds[(rec as any).zoom_file_id || rec.id])}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 px-2.5 py-1 rounded-md transition shadow-sm disabled:opacity-50">
+                                {enqueuingIds[(rec as any).zoom_file_id || rec.id] ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="w-3 h-3" />
+                                )}
+                                Retry {targetShort}
                               </button>
                             </div>
                           ) : rec.status === "skipped" ? (
@@ -1601,6 +2097,22 @@ export default function ZoomYouTubeDashboardPage() {
             </table>
           </div>
         )}
+
+        {recordings.length > 0 && (
+          <Pagination
+            currentPage={safeRecordingsPage}
+            totalPages={recordingsTotalPages}
+            totalItems={filteredRecordings.length}
+            pageSize={recordingsPageSize}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={setRecordingsPage}
+            onPageSizeChange={(size) => {
+              setRecordingsPageSize(size);
+              setRecordingsPage(1);
+            }}
+            itemLabel="recordings"
+          />
+        )}
       </div>
 
       
@@ -1615,6 +2127,11 @@ export default function ZoomYouTubeDashboardPage() {
         clearCompleted={handleClearCompletedQueue}
         retryQueueItem={handleRetryQueueItem}
         removeFromQueue={handleRemoveFromQueue}
+        startDirectProcessing={handleStartDirectProcessing}
+        onTriggerCloudRunner={handleTriggerCloudRunner}
+        isTriggeringRunner={triggeringRunner}
+        processingTarget={processingTarget}
+        setProcessingTarget={handleSetProcessingTarget}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
         currentWatermarkPreset={currentWatermarkPreset}
@@ -1632,6 +2149,58 @@ export default function ZoomYouTubeDashboardPage() {
           }
         }}
       />
+      </div>
+
+      {/* Modern Floating Toast Notification Container */}
+      <div className="fixed top-5 right-5 z-[100] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto p-3.5 rounded-xl shadow-2xl border backdrop-blur-md transition-all duration-300 animate-in fade-in slide-in-from-top-3 flex items-start gap-3 ${
+              toast.type === "success"
+                ? "bg-slate-900/95 text-white border-emerald-500/50 ring-1 ring-emerald-500/20"
+                : toast.type === "error"
+                ? "bg-slate-900/95 text-white border-rose-500/50 ring-1 ring-rose-500/20"
+                : toast.type === "warning"
+                ? "bg-slate-900/95 text-white border-amber-500/50 ring-1 ring-amber-500/20"
+                : "bg-slate-900/95 text-white border-indigo-500/50 ring-1 ring-indigo-500/20"
+            }`}>
+            <div className="shrink-0 mt-0.5">
+              {toast.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              ) : toast.type === "error" ? (
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+              ) : toast.type === "warning" ? (
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Cloud className="w-4 h-4 text-indigo-400" />
+              )}
+            </div>
+            <div className="space-y-1 min-w-0 flex-1">
+              <h5 className="text-xs font-bold tracking-wide">{toast.title}</h5>
+              {toast.message && (
+                <p className="text-[11px] text-slate-300 leading-relaxed">{toast.message}</p>
+              )}
+              {toast.action && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.action?.onClick();
+                    removeToast(toast.id);
+                  }}
+                  className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 rounded-lg transition shadow-xs">
+                  <span>{toast.action.label}</span>
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => removeToast(toast.id)}
+              className="text-slate-400 hover:text-white p-0.5 rounded transition">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

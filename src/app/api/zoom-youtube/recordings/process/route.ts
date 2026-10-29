@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     const { recording, watermark, watermarkText, customTitle, customDescription, privacyStatus, resolution } = body;
 
     const fileId = recording?.fileId || recording?.zoom_file_id;
-    const downloadUrl = recording?.downloadUrl;
+    const downloadUrl = recording?.downloadUrl || recording?.download_url;
     const zoomAccountId = recording?.zoomAccountId || recording?.zoom_account_id;
 
     if (!recording || !fileId || !downloadUrl || !zoomAccountId) {

@@ -75,8 +75,28 @@ async function loadDefaultSettings() {
   }
 }
 
+// Poll the job row so a cancel from the dashboard (which resets it to
+// "discovered") can abort the ffmpeg/upload running in this process.
+function watchForCancellation(jobId: string, controller: AbortController) {
+  const timer = setInterval(async () => {
+    try {
+      const { data } = await supabase
+        .from("zy_recordings")
+        .select("status")
+        .eq("id", jobId)
+        .maybeSingle();
+      const status = data?.status;
+      if (status && ["discovered", "cancelled", "skipped"].includes(status)) {
+        console.log(`\n🛑 [Cloud Worker] Cancel requested for ${jobId} (status: ${status}). Aborting...`);
+        controller.abort();
+      }
+    } catch {}
+  }, 2000);
+  return () => clearInterval(timer);
+}
+
 async function runBatch() {
-  const storage = await checkDeviceStorage({ criticalThresholdGB: 5 });
+  const storage = await checkDeviceStorage({ criticalThresholdGB: 2 });
   console.log(`💾 Runner Free Disk Space: ${storage.freeGB} GB (${storage.status.toUpperCase()})`);
 
   await sendHeartbeat();
@@ -88,13 +108,26 @@ async function runBatch() {
 
   try {
     while (true) {
-      // 1. Fetch the oldest queued recording
-      const { data: candidateJobs, error: selectErr } = await supabase
+      // 1. Fetch the oldest queued recording routed to the cloud runner
+      let { data: candidateJobs, error: selectErr } = await supabase
         .from("zy_recordings")
         .select("*")
         .eq("status", "queued")
+        .eq("processing_target", "cloud")
         .order("recording_start", { ascending: true })
         .limit(1);
+
+      // Gracefully handle databases without the processing_target column yet.
+      if (selectErr && /processing_target/i.test(selectErr.message)) {
+        const retry = await supabase
+          .from("zy_recordings")
+          .select("*")
+          .eq("status", "queued")
+          .order("recording_start", { ascending: true })
+          .limit(1);
+        candidateJobs = retry.data;
+        selectErr = retry.error;
+      }
 
       if (selectErr) {
         console.error("❌ [Cloud Worker] Error checking queue:", selectErr.message);
@@ -130,6 +163,7 @@ async function runBatch() {
 
       processedCount++;
       const abortController = new AbortController();
+      const stopCancelWatch = watchForCancellation(job.id, abortController);
 
       console.log(`\n=======================================================`);
       console.log(`📥 [Task ${processedCount}] Processing: "${job.topic}"`);
@@ -227,6 +261,8 @@ async function runBatch() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", job.id);
+      } finally {
+        stopCancelWatch();
       }
     }
   } finally {

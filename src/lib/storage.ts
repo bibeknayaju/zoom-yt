@@ -28,8 +28,8 @@ export interface DeviceSystemInfo {
 
 export interface StorageCheckOptions {
   targetDir?: string;
-  warningThresholdGB?: number;  // Alert warning if below this (default: 20 GB)
-  criticalThresholdGB?: number; // Pause/block downloads if below this (default: 10 GB)
+  warningThresholdGB?: number;  // Alert warning if below this (default: 10 GB)
+  criticalThresholdGB?: number; // Pause/block downloads if below this (default: 2 GB)
 }
 
 /**
@@ -58,8 +58,8 @@ export function getSafeTempDir(): string {
 export async function checkDeviceStorage(options: StorageCheckOptions = {}): Promise<StorageStatus> {
   const defaultDir = getSafeTempDir();
   const targetPath = options.targetDir || defaultDir;
-  const warningThresholdGB = options.warningThresholdGB ?? 20;
-  const criticalThresholdGB = options.criticalThresholdGB ?? 10;
+  const warningThresholdGB = options.warningThresholdGB ?? 10;
+  const criticalThresholdGB = options.criticalThresholdGB ?? 2;
 
   try {
     await fs.mkdir(targetPath, { recursive: true });

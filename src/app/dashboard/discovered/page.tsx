@@ -104,6 +104,7 @@ export default function DiscoveredVideosPage() {
     removeFromQueue: handleRemoveFromQueue,
     retryQueueItem: handleRetryQueueItem,
     clearCompleted: handleClearCompletedQueue,
+    startDirectProcessing: handleStartDirectProcessing,
   } = useUploadQueue();
 
   // Fetch paginated recordings from API
@@ -654,6 +655,7 @@ export default function DiscoveredVideosPage() {
         clearCompleted={handleClearCompletedQueue}
         retryQueueItem={handleRetryQueueItem}
         removeFromQueue={handleRemoveFromQueue}
+        startDirectProcessing={handleStartDirectProcessing}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
         currentWatermarkPreset={currentWatermarkPreset}

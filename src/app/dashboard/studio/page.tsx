@@ -39,6 +39,7 @@ function StudioContent() {
     removeFromQueue,
     retryQueueItem,
     clearCompleted,
+    startDirectProcessing,
   } = useUploadQueue();
 
   const loadRecordings = () => {
@@ -325,6 +326,7 @@ function StudioContent() {
         clearCompleted={clearCompleted}
         retryQueueItem={retryQueueItem}
         removeFromQueue={removeFromQueue}
+        startDirectProcessing={startDirectProcessing}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
       />
