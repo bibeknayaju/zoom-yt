@@ -6,17 +6,19 @@ export async function GET() {
     const state = await readZoomYtState();
     const now = Date.now();
 
-    const deviceList = Object.values(state.devices).map((device) => {
-      const lastSeenMs = new Date(device.lastHeartbeat).getTime();
-      const secondsAgo = Math.max(0, Math.floor((now - lastSeenMs) / 1000));
-      const isOnline = secondsAgo < 120; // Active if seen in the last 2 minutes
+    const deviceList = Object.values(state.devices)
+      .filter((device) => !device.nodeId.startsWith("github-runner-") && !device.nodeId.startsWith("github-cloud-"))
+      .map((device) => {
+        const lastSeenMs = new Date(device.lastHeartbeat).getTime();
+        const secondsAgo = Math.max(0, Math.floor((now - lastSeenMs) / 1000));
+        const isOnline = secondsAgo < 120; // Active if seen in the last 2 minutes
 
-      return {
-        ...device,
-        secondsAgo,
-        isOnline,
-      };
-    });
+        return {
+          ...device,
+          secondsAgo,
+          isOnline,
+        };
+      });
 
     return NextResponse.json({
       success: true,

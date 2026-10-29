@@ -296,15 +296,19 @@ export default function ZoomYouTubeDashboardPage() {
     }
   }, []);
 
+  const isAnyJobActive = recordings.some((r) =>
+    ["downloading", "watermarking", "uploading"].includes(r.status)
+  );
+
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
         fetchStatus();
       }
-    }, 25000); // Poll every 25s when tab is visible
+    }, isAnyJobActive ? 2500 : 20000);
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+  }, [fetchStatus, isAnyJobActive]);
 
   const handleSetPrimary = async (nodeId: string) => {
     try {
@@ -761,17 +765,21 @@ export default function ZoomYouTubeDashboardPage() {
     }
   };
 
-  // Check if any device has storage warnings
-  const storageWarnings = devices.filter(
+  const [showDevicesSection, setShowDevicesSection] = useState(false);
+
+  const physicalDevices = devices.filter(
+    (d) => !d.nodeId.startsWith("github-") && !d.label?.toLowerCase().includes("cloud")
+  );
+
+  // Check if any physical device has storage warnings
+  const storageWarnings = physicalDevices.filter(
     (d) => d.system?.storage?.status === "warning" || d.system?.storage?.status === "critical",
   );
 
-  const localWorkersOnline = devices.filter(
-    (d) => d.isOnline && !d.nodeId.startsWith("github-runner"),
-  );
+  const localWorkersOnline = physicalDevices.filter((d) => d.isOnline);
 
   const cloudWorkersOnline = devices.filter(
-    (d) => d.isOnline && (d.nodeId.startsWith("github-runner") || d.label.toLowerCase().includes("cloud")),
+    (d) => d.isOnline && (d.nodeId.startsWith("github-") || d.label.toLowerCase().includes("cloud")),
   );
 
   const queuedCloudRecordings = recordings.filter(
@@ -1069,166 +1077,191 @@ export default function ZoomYouTubeDashboardPage() {
         </div>
       )}
 
-      {/* Device Management Section */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
+      {/* Physical Hardware Laptops Section (Collapsible) */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowDevicesSection((prev) => !prev)}
+          className="w-full flex items-center justify-between p-4 bg-slate-50/60 hover:bg-slate-100/80 transition text-left">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100">
+              <Laptop className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Physical Worker Laptops ({physicalDevices.length})
+                </h3>
+                {localWorkersOnline.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    <Radio className="w-2 h-2 animate-pulse text-emerald-600" /> {localWorkersOnline.length} online
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                    No laptop worker running
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {physicalDevices.length > 0
+                  ? `Primary: ${physicalDevices.find((d) => d.nodeId === primaryNodeId)?.label || "Auto"} • Click to view hardware storage & status`
+                  : "All cloud batch tasks run on GitHub Actions. Run 'npm run worker' on your laptop if processing locally."}
+              </p>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
-            <Laptop className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-lg font-semibold text-slate-900">
-              Connected Worker Devices
-            </h2>
-          </div>
-          <span className="text-xs text-slate-500">
-            Active Primary:{" "}
-            <span className="font-semibold text-indigo-600">
-              {devices.find((d) => d.nodeId === primaryNodeId)?.label || "None set"}
+            <span className="text-xs font-semibold text-indigo-600">
+              {showDevicesSection ? "Hide Details" : "View Details"}
             </span>
-          </span>
-        </div>
-
-        {devices.length === 0 && !loading && (
-          <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-            <Laptop className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-            <p className="text-sm font-medium text-slate-600">No worker devices reported yet</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              Run <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">npm run worker</code> on your Office Laptop or current machine to register storage.
-            </p>
+            {showDevicesSection ? (
+              <ChevronUp className="w-4 h-4 text-slate-500" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-500" />
+            )}
           </div>
-        )}
+        </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {devices.map((device) => {
-            const isPrimary = device.nodeId === primaryNodeId;
-            const storage = device.system?.storage;
-            const usedPct = storage?.totalGB
-              ? Math.min(100, Math.round((storage.usedGB / storage.totalGB) * 100))
-              : 0;
+        {showDevicesSection && (
+          <div className="p-5 border-t border-slate-200 bg-white">
+            {physicalDevices.length === 0 && !loading && (
+              <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                <Laptop className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm font-medium text-slate-600">No physical worker laptops reported yet</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                  Run <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">npm run worker</code> on your Office Laptop to register its disk storage here.
+                </p>
+              </div>
+            )}
 
-            const isLow = storage?.status === "warning" || storage?.status === "critical";
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {physicalDevices.map((device) => {
+                const isPrimary = device.nodeId === primaryNodeId;
+                const storage = device.system?.storage;
+                const usedPct = storage?.totalGB
+                  ? Math.min(100, Math.round((storage.usedGB / storage.totalGB) * 100))
+                  : 0;
 
-            return (
-              <div
-                key={device.nodeId}
-                className={`relative rounded-xl border bg-white p-6 shadow-sm transition-all ${
-                  isPrimary
-                    ? "border-indigo-400 ring-2 ring-indigo-100"
-                    : "border-slate-200 hover:border-slate-300"
-                }`}>
-                {/* Card Top: Node Info + Role Badge */}
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-slate-900">{device.label}</h3>
-                      {device.isOnline ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <Radio className="w-2.5 h-2.5 animate-pulse text-emerald-600" /> Online
+                const isLow = storage?.status === "warning" || storage?.status === "critical";
+
+                return (
+                  <div
+                    key={device.nodeId}
+                    className={`relative rounded-xl border bg-white p-5 shadow-xs transition-all ${
+                      isPrimary
+                        ? "border-indigo-400 ring-2 ring-indigo-100"
+                        : "border-slate-200 hover:border-slate-300"
+                    }`}>
+                    {/* Card Top: Node Info + Role Badge */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-slate-900">{device.label}</h4>
+                          {device.isOnline ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                              <Radio className="w-2 h-2 animate-pulse text-emerald-600" /> Online
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              Seen {device.secondsAgo}s ago
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Hostname: {device.system?.hostname} • {device.system?.platform} ({device.system?.arch})
+                        </p>
+                      </div>
+
+                      {isPrimary ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-indigo-600 text-white px-2.5 py-0.5 rounded-full shadow-xs">
+                          <Star className="w-3 h-3 fill-current" /> Primary Node
                         </span>
                       ) : (
-                        <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                          Seen {device.secondsAgo}s ago
+                        <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                          Backup
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Hostname: {device.system?.hostname} • {device.system?.platform} ({device.system?.arch})
-                    </p>
-                  </div>
 
-                  {isPrimary ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold bg-indigo-600 text-white px-3 py-1 rounded-full shadow-sm">
-                      <Star className="w-3.5 h-3.5 fill-current" /> Primary Node
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">
-                      Backup Standby
-                    </span>
-                  )}
-                </div>
+                    {/* Storage Health Gauge */}
+                    {storage && (
+                      <div className="rounded-lg bg-slate-50 p-3 border border-slate-100 mb-3 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-medium">
+                          <div className="flex items-center gap-1.5 text-slate-700">
+                            <HardDrive className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Disk Storage</span>
+                          </div>
+                          <span className={isLow ? "text-amber-600 font-bold" : "text-emerald-700 font-bold"}>
+                            {storage.freeGB} GB Free ({storage.freePercentage}%)
+                          </span>
+                        </div>
 
-                {/* Storage Health Gauge */}
-                {storage && (
-                  <div className="rounded-lg bg-slate-50 p-4 border border-slate-100 mb-4 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <div className="flex items-center gap-1.5 text-slate-700">
-                        <HardDrive className="w-4 h-4 text-slate-500" />
-                        <span>Disk Storage</span>
+                        {/* Progress Bar */}
+                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              storage.status === "critical"
+                                ? "bg-rose-500"
+                                : storage.status === "warning"
+                                ? "bg-amber-500"
+                                : "bg-emerald-500"
+                            }`}
+                            style={{ width: `${usedPct}%` }}
+                          />
+                        </div>
+
+                        <div className="flex justify-between text-[10px] text-slate-500">
+                          <span>Used: {storage.usedGB} GB</span>
+                          <span>Total: {storage.totalGB} GB</span>
+                        </div>
                       </div>
-                      <span className={isLow ? "text-amber-600 font-bold" : "text-emerald-700 font-bold"}>
-                        {storage.freeGB} GB Free ({storage.freePercentage}%)
-                      </span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          storage.status === "critical"
-                            ? "bg-rose-500"
-                            : storage.status === "warning"
-                            ? "bg-amber-500"
-                            : "bg-emerald-500"
-                        }`}
-                        style={{ width: `${usedPct}%` }}
-                      />
-                    </div>
-
-                    <div className="flex justify-between text-[11px] text-slate-500">
-                      <span>Used: {storage.usedGB} GB</span>
-                      <span>Total: {storage.totalGB} GB</span>
-                    </div>
-
-                    {isLow && (
-                      <p className="text-[11px] text-amber-700 font-medium pt-1">
-                        ⚠️ {storage.message}
-                      </p>
                     )}
-                  </div>
-                )}
 
-                {/* Hardware Specs */}
-                <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 mb-5">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-slate-400" />
-                    <span>{device.system?.cpus} Cores ({device.system?.cpuModel?.slice(0, 18)})</span>
-                  </div>
-                  <div className="text-right">
-                    <span>RAM: {device.system?.freeMemoryGB} GB free / {device.system?.totalMemoryGB} GB</span>
-                  </div>
-                </div>
+                    {/* Hardware Specs */}
+                    <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 mb-4 bg-slate-50/50 p-2.5 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Cpu className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{device.system?.cpus} Cores ({device.system?.cpuModel?.slice(0, 18)})</span>
+                      </div>
+                      <div className="text-right">
+                        <span>RAM: {device.system?.freeMemoryGB} GB free / {device.system?.totalMemoryGB} GB</span>
+                      </div>
+                    </div>
 
-                {/* Action: Set as Primary */}
-                <div className="border-t pt-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">
-                      ID: <code className="text-slate-600">{device.nodeId}</code>
-                    </span>
-                    {!isPrimary && (
-                      <button
-                        onClick={() => handleDeleteDevice(device.nodeId)}
-                        title="Remove device from monitoring list"
-                        className="text-slate-300 hover:text-red-500 transition p-0.5 rounded">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    {/* Action: Set as Primary */}
+                    <div className="border-t pt-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400">
+                          ID: <code className="text-slate-600">{device.nodeId}</code>
+                        </span>
+                        {!isPrimary && (
+                          <button
+                            onClick={() => handleDeleteDevice(device.nodeId)}
+                            title="Remove device from monitoring list"
+                            className="text-slate-300 hover:text-red-500 transition p-0.5 rounded">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      {!isPrimary ? (
+                        <button
+                          onClick={() => handleSetPrimary(device.nodeId)}
+                          disabled={updatingNode === device.nodeId}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1 rounded-lg transition disabled:opacity-50">
+                          <Star className="w-3 h-3" />
+                          {updatingNode === device.nodeId ? "Switching..." : "Set as Primary"}
+                        </button>
+                      ) : (
+                        <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Active Worker
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  {!isPrimary ? (
-                    <button
-                      onClick={() => handleSetPrimary(device.nodeId)}
-                      disabled={updatingNode === device.nodeId}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3.5 py-1.5 rounded-lg transition disabled:opacity-50">
-                      <Star className="w-3.5 h-3.5" />
-                      {updatingNode === device.nodeId ? "Switching..." : "Set as Primary"}
-                    </button>
-                  ) : (
-                    <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Active Worker
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* YouTube Connection Card */}

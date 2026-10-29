@@ -74,7 +74,8 @@ export async function readZoomYtState(): Promise<ZoomYtState> {
         }
       }
       if (!state.primaryNodeId && devicesRes.data.length > 0) {
-        state.primaryNodeId = devicesRes.data[0].node_id;
+        const physical = devicesRes.data.find((d: any) => !d.node_id.startsWith("github-"));
+        if (physical) state.primaryNodeId = physical.node_id;
       }
     }
 
@@ -117,13 +118,14 @@ export async function recordHeartbeat(payload: {
   system: DeviceSystemInfo;
 }): Promise<{ isPrimary: boolean; state: ZoomYtState }> {
   const currentState = await readZoomYtState();
+  const isCloudRunner = payload.nodeId.startsWith("github-");
   const existing = currentState.devices[payload.nodeId];
 
-  if (!currentState.primaryNodeId) {
+  if (!currentState.primaryNodeId && !isCloudRunner) {
     currentState.primaryNodeId = payload.nodeId;
   }
 
-  const isPrimary = currentState.primaryNodeId === payload.nodeId;
+  const isPrimary = !isCloudRunner && currentState.primaryNodeId === payload.nodeId;
   const label = payload.label || existing?.label || payload.system.hostname;
 
   currentState.devices[payload.nodeId] = {

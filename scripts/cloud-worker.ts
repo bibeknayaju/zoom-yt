@@ -9,8 +9,11 @@
  */
 
 import os from "node:os";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { getDeviceSystemInfo, checkDeviceStorage } from "../src/lib/storage";
+import { getDeviceSystemInfo, checkDeviceStorage, getSafeTempDir } from "../src/lib/storage";
 import { decryptToken } from "../src/lib/crypto";
 import { getZoomS2SToken } from "../src/lib/zoom-s2s";
 import { processRecordingEndToEnd } from "../src/lib/pipeline";
@@ -33,7 +36,8 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const RUN_ID = process.env.GITHUB_RUN_ID || String(Date.now());
-const NODE_ID = `github-runner-${RUN_ID}`;
+// Use consistent singleton node ID so ephemeral cloud runs do not flood the devices list
+const NODE_ID = "github-cloud-runner";
 const NODE_LABEL = `GitHub Cloud Runner #${RUN_ID} (Linux x64)`;
 
 console.log("=======================================================");
@@ -96,6 +100,11 @@ function watchForCancellation(jobId: string, controller: AbortController) {
 }
 
 async function runBatch() {
+  // Clean up any stale ephemeral runner nodes from previous runs so they never clutter devices
+  try {
+    await supabase.from("zy_worker_nodes").delete().like("node_id", "github-runner-%");
+  } catch {}
+
   const storage = await checkDeviceStorage({ criticalThresholdGB: 2 });
   console.log(`💾 Runner Free Disk Space: ${storage.freeGB} GB (${storage.status.toUpperCase()})`);
 
@@ -215,6 +224,37 @@ async function runBatch() {
         };
 
         // 5. Execute End-to-End Processing (Stream + Watermark + YouTube Upload + Disk Cleanup)
+        let lastReportedTime = 0;
+        let lastReportedPct = -1;
+
+        const handleProgress = (prog: { percent: number; stage: string; message: string }) => {
+          const bar = `[${"█".repeat(Math.floor(prog.percent / 5))}${"-".repeat(20 - Math.floor(prog.percent / 5))}]`;
+          process.stdout.write(`\r⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}    `);
+
+          const now = Date.now();
+          if (now - lastReportedTime < 1500 && Math.abs(prog.percent - lastReportedPct) < 2 && prog.percent !== 100) {
+            return;
+          }
+          lastReportedTime = now;
+          lastReportedPct = prog.percent;
+
+          // Write live progress to Supabase in background so the UI drawer reflects exact % in real-time
+          void supabase
+            .from("zy_recordings")
+            .update({
+              status: prog.stage === "uploading" ? "uploading" : "watermarking",
+              options: {
+                ...jobOptions,
+                progressPercent: prog.percent,
+                progressMsg: prog.message,
+                progressStage: prog.stage,
+                progressUpdatedAt: new Date().toISOString(),
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", job.id);
+        };
+
         const result = await processRecordingEndToEnd(
           {
             meetingTopic: job.topic,
@@ -231,10 +271,7 @@ async function runBatch() {
             durationMinutes: job.duration_minutes,
             fileSizeBytes: job.file_size_bytes,
           },
-          (prog) => {
-            const bar = `[${"█".repeat(Math.floor(prog.percent / 5))}${"-".repeat(20 - Math.floor(prog.percent / 5))}]`;
-            process.stdout.write(`\r⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}    `);
-          },
+          handleProgress,
           abortController.signal
         );
 
@@ -263,10 +300,26 @@ async function runBatch() {
           .eq("id", job.id);
       } finally {
         stopCancelWatch();
+
+        // 6. Absolute Zero-Byte Disk Sweep: purge any lingering temporary files
+        try {
+          const tempDir = getSafeTempDir();
+          if (fs.existsSync(tempDir)) {
+            const files = await fsp.readdir(tempDir);
+            for (const f of files) {
+              if (f.includes(job.zoom_file_id) || f.startsWith("temp_badge_")) {
+                await fsp.unlink(path.join(tempDir, f)).catch(() => {});
+              }
+            }
+          }
+        } catch {}
       }
     }
   } finally {
     clearInterval(heartbeatTimer);
+    try {
+      await supabase.from("zy_worker_nodes").delete().eq("node_id", NODE_ID);
+    } catch {}
   }
 
   console.log("\n=======================================================");

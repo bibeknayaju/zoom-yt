@@ -245,6 +245,36 @@ async function pollAndExecute() {
       };
 
       // 5. Execute End-to-End Processing (Download + Watermark + YouTube Upload)
+      let lastReportedTime = 0;
+      let lastReportedPct = -1;
+
+      const handleProgress = (prog: { percent: number; stage: string; message: string }) => {
+        const bar = `[${"█".repeat(Math.floor(prog.percent / 5))}${"-".repeat(20 - Math.floor(prog.percent / 5))}]`;
+        process.stdout.write(`\r⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}    `);
+
+        const now = Date.now();
+        if (now - lastReportedTime < 1500 && Math.abs(prog.percent - lastReportedPct) < 2 && prog.percent !== 100) {
+          return;
+        }
+        lastReportedTime = now;
+        lastReportedPct = prog.percent;
+
+        void supabase
+          .from("zy_recordings")
+          .update({
+            status: prog.stage === "uploading" ? "uploading" : "watermarking",
+            options: {
+              ...jobOptions,
+              progressPercent: prog.percent,
+              progressMsg: prog.message,
+              progressStage: prog.stage,
+              progressUpdatedAt: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
+      };
+
       const result = await processRecordingEndToEnd(
         {
           meetingTopic: job.topic,
@@ -261,10 +291,7 @@ async function pollAndExecute() {
           durationMinutes: job.duration_minutes,
           fileSizeBytes: job.file_size_bytes,
         },
-        (prog) => {
-          const bar = `[${"█".repeat(Math.floor(prog.percent / 5))}${"-".repeat(20 - Math.floor(prog.percent / 5))}]`;
-          process.stdout.write(`\r⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}    `);
-        },
+        handleProgress,
         currentAbortController.signal
       );
 

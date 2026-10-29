@@ -253,13 +253,29 @@ export function trackServerQueueItems(
         queuedAt: Date.now(),
       };
 
+    const progressPercent =
+      typeof rec.options?.progressPercent === "number"
+        ? rec.options.progressPercent
+        : typeof rec.progress_percent === "number"
+        ? rec.progress_percent
+        : status === "uploaded"
+        ? 100
+        : base.progressPercent || 0;
+
+    const progressMsg =
+      rec.options?.progressMsg ||
+      rec.progress_message ||
+      base.progressMsg ||
+      serverStatusMessage(rawStatus, target);
+
     const updated: DirectUploadQueueItem = {
       ...base,
       recording: base.recording || rec,
       status,
       serverManaged: true,
       serverTarget: target,
-      progressMsg: serverStatusMessage(rawStatus, target),
+      progressPercent,
+      progressMsg,
       youtubeUrl: rec.youtubeUrl || rec.youtube_url || base.youtubeUrl,
       error: status === "failed" ? rec.error_message || rec.error || "Processing failed" : undefined,
     };
@@ -297,7 +313,29 @@ export function syncServerQueueStatuses(recordings: any[]) {
     const youtubeUrl = rec.youtube_url || rec.youtubeUrl || item.youtubeUrl;
     const error = status === "failed" ? rec.error_message || item.error : undefined;
 
-    if (status === item.status && youtubeUrl === item.youtubeUrl && error === item.error) {
+    const progressPercent =
+      typeof rec.options?.progressPercent === "number"
+        ? rec.options.progressPercent
+        : typeof rec.progress_percent === "number"
+        ? rec.progress_percent
+        : status === "uploaded"
+        ? 100
+        : item.progressPercent || 0;
+
+    const progressMsg =
+      rec.options?.progressMsg ||
+      rec.progress_message ||
+      (status === "uploading" && rec.status
+        ? `${rec.status === "watermarking" ? "Watermarking" : "Uploading"} on ${target === "local" ? "laptop" : "cloud"}...`
+        : serverStatusMessage(rec.status, target));
+
+    if (
+      status === item.status &&
+      youtubeUrl === item.youtubeUrl &&
+      error === item.error &&
+      progressPercent === item.progressPercent &&
+      progressMsg === item.progressMsg
+    ) {
       return item;
     }
 
@@ -305,7 +343,8 @@ export function syncServerQueueStatuses(recordings: any[]) {
     return {
       ...item,
       status,
-      progressMsg: serverStatusMessage(rec.status, target),
+      progressPercent,
+      progressMsg,
       youtubeUrl,
       error,
     };
