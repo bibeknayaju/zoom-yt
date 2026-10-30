@@ -65,26 +65,26 @@ export function Pagination({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 bg-white border-t border-slate-200 text-xs text-slate-600 select-none">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-3 px-4 bg-white dark:bg-black border-t border-slate-200 dark:border-zinc-800 text-xs text-slate-600 dark:text-slate-400 select-none">
       {/* Left: Summary and Page Size */}
       <div className="flex items-center gap-4 flex-wrap">
         <span>
-          Showing <strong className="text-slate-900">{startItem}</strong> to{" "}
-          <strong className="text-slate-900">{endItem}</strong> of{" "}
-          <strong className="text-slate-900">{totalItems}</strong> {itemLabel}
+          Showing <strong className="text-slate-900 dark:text-white">{startItem}</strong> to{" "}
+          <strong className="text-slate-900 dark:text-white">{endItem}</strong> of{" "}
+          <strong className="text-slate-900 dark:text-white">{totalItems}</strong> {itemLabel}
         </span>
 
         {onPageSizeChange && (
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-500">Rows per page:</span>
+            <span className="text-slate-500 dark:text-slate-400">Rows per page:</span>
             <select
               value={pageSize}
               disabled={disabled}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
               aria-label="Rows per page"
-              className="py-1 px-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer">
+              className="py-1 px-2 border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-50 dark:bg-zinc-900 text-slate-800 dark:text-slate-200 font-medium focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer">
               {pageSizeOptions.map((opt) => (
-                <option key={opt} value={opt}>
+                <option key={opt} value={opt} className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-white">
                   {opt}
                 </option>
               ))}
@@ -101,8 +101,8 @@ export function Pagination({
           onClick={() => onPageChange(1)}
           disabled={disabled || currentPage <= 1}
           title="First page"
-          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition">
-          <ChevronsLeft className="w-4 h-4 text-slate-600" />
+          className="p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 disabled:opacity-40 disabled:hover:bg-transparent transition">
+          <ChevronsLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
         </button>
 
         {/* Previous Page */}
@@ -111,8 +111,8 @@ export function Pagination({
           onClick={() => onPageChange(currentPage - 1)}
           disabled={disabled || currentPage <= 1}
           title="Previous page"
-          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition">
-          <ChevronLeft className="w-4 h-4 text-slate-600" />
+          className="p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 disabled:opacity-40 disabled:hover:bg-transparent transition">
+          <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />
         </button>
 
         {/* Page Numbers */}
@@ -136,7 +136,7 @@ export function Pagination({
                 className={`min-w-[32px] h-8 px-2 rounded-lg font-semibold transition text-xs ${
                   isActive
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "border border-slate-200 hover:bg-slate-100 text-slate-700"
+                    : "border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 text-slate-700 dark:text-slate-300"
                 }`}>
                 {pageNum}
               </button>
@@ -150,8 +150,8 @@ export function Pagination({
           onClick={() => onPageChange(currentPage + 1)}
           disabled={disabled || currentPage >= totalPages}
           title="Next page"
-          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition">
-          <ChevronRight className="w-4 h-4 text-slate-600" />
+          className="p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 disabled:opacity-40 disabled:hover:bg-transparent transition">
+          <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
         </button>
 
         {/* Last Page */}
@@ -160,8 +160,8 @@ export function Pagination({
           onClick={() => onPageChange(totalPages)}
           disabled={disabled || currentPage >= totalPages}
           title="Last page"
-          className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition">
-          <ChevronsRight className="w-4 h-4 text-slate-600" />
+          className="p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 disabled:opacity-40 disabled:hover:bg-transparent transition">
+          <ChevronsRight className="w-4 h-4 text-slate-600 dark:text-slate-400" />
         </button>
       </div>
     </div>

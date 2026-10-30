@@ -529,11 +529,11 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
   const toMB = (bytes?: number) => (bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "~");
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-      <div className="relative w-full max-w-7xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] text-slate-100">
+    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+      <div className="relative w-full max-w-7xl bg-black border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] text-slate-100">
         
         {/* Top Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-black/90 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-red-600/20 text-red-500 rounded-lg border border-red-500/30">
               <Film className="w-5 h-5" />
@@ -543,7 +543,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                 <span className="text-xs font-semibold uppercase tracking-wider text-red-400">
                   Video Watermark & YouTube Studio
                 </span>
-                <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700">
+                <span className="text-[10px] bg-zinc-900 text-zinc-300 px-2 py-0.5 rounded-full border border-zinc-800">
                   1080p Canvas
                 </span>
                 {watermarkStatus === "done" && (
@@ -579,8 +579,8 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
               onClick={() => setShowGridGuides(!showGridGuides)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition flex items-center gap-1.5 ${
                 showGridGuides
-                  ? "bg-slate-800 text-cyan-400 border-cyan-500/40"
-                  : "bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200"
+                  ? "bg-zinc-800 text-cyan-400 border-cyan-500/40"
+                  : "bg-zinc-950 text-slate-400 border-zinc-800 hover:text-slate-200"
               }`}
               title="Toggle Safe Area Guides">
               <Eye className="w-3.5 h-3.5" />
@@ -590,7 +590,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
             <button
               onClick={onClose}
               disabled={watermarkStatus === "rendering" || uploadStatus === "uploading"}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition disabled:opacity-30">
+              className="p-2 text-slate-400 hover:text-white hover:bg-zinc-900 rounded-lg transition disabled:opacity-30">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -600,14 +600,14 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
         <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 overflow-y-auto min-h-0">
           
           {/* Left Column: 16:9 Video Canvas */}
-          <div className="lg:col-span-7 bg-slate-950 p-6 flex flex-col justify-center items-center border-b lg:border-b-0 lg:border-r border-slate-800 relative">
+          <div className="lg:col-span-7 bg-black p-6 flex flex-col justify-center items-center border-b lg:border-b-0 lg:border-r border-zinc-800 relative">
             
             {/* The 16:9 Video Frame */}
             <div
               ref={canvasContainerRef}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
-              className="w-full relative aspect-video rounded-xl overflow-hidden border border-slate-800 shadow-2xl bg-gradient-to-br from-slate-900 via-slate-950 to-black select-none touch-none">
+              className="w-full relative aspect-video rounded-xl overflow-hidden border border-zinc-800 shadow-2xl bg-gradient-to-br from-zinc-900 via-zinc-950 to-black select-none touch-none">
               
               {/* Native Video Player */}
               <video
@@ -624,8 +624,8 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
 
               {/* Placeholder backdrop if video stream loading */}
               {!videoLoaded && (
-                <div className="absolute inset-0 z-0 flex flex-col items-center justify-center p-8 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black">
-                  <div className="w-16 h-16 rounded-full bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mb-3 shadow-inner">
+                <div className="absolute inset-0 z-0 flex flex-col items-center justify-center p-8 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-black">
+                  <div className="w-16 h-16 rounded-full bg-zinc-800/80 border border-zinc-700/80 flex items-center justify-center mb-3 shadow-inner">
                     <Film className="w-8 h-8 text-slate-400" />
                   </div>
                   <h3 className="text-sm font-semibold text-slate-200 text-center max-w-md">
@@ -645,8 +645,8 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       Title Safe Margin (92%)
                     </span>
                   </div>
-                  <div className="absolute top-1/2 left-0 right-0 border-t border-slate-800/40"></div>
-                  <div className="absolute left-1/2 top-0 bottom-0 border-l border-slate-800/40"></div>
+                  <div className="absolute top-1/2 left-0 right-0 border-t border-zinc-800/40"></div>
+                  <div className="absolute left-1/2 top-0 bottom-0 border-l border-zinc-800/40"></div>
                 </div>
               )}
 
@@ -722,7 +722,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
               <div className="flex items-center gap-2">
                 <button
                   onClick={togglePlay}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition">
+                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-slate-200 rounded-lg transition">
                   {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
                 </button>
                 <span>
@@ -738,15 +738,15 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
           </div>
 
           {/* Right Column: 2-Step Controls */}
-          <div className="lg:col-span-5 bg-slate-900 p-6 flex flex-col justify-between overflow-y-auto space-y-5">
+          <div className="lg:col-span-5 bg-black p-6 flex flex-col justify-between overflow-y-auto space-y-5">
             
             <div className="space-y-5">
               {/* Tabs */}
-              <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+              <div className="flex rounded-lg bg-zinc-950 p-1 border border-zinc-800">
                 <button
                   onClick={() => setActiveTab("watermark")}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition flex items-center justify-center gap-1.5 ${
-                    activeTab === "watermark" ? "bg-slate-800 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                    activeTab === "watermark" ? "bg-zinc-800 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
                   }`}>
                   <Sliders className="w-3.5 h-3.5" />
                   1. Watermark Settings
@@ -754,7 +754,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                 <button
                   onClick={() => setActiveTab("youtube")}
                   className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition flex items-center justify-center gap-1.5 ${
-                    activeTab === "youtube" ? "bg-slate-800 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                    activeTab === "youtube" ? "bg-zinc-800 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
                   }`}>
                   <Youtube className="w-3.5 h-3.5 text-red-500" />
                   2. YouTube Metadata
@@ -767,7 +767,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                   {/* Mode Picker */}
                   <div>
                     <label className="text-xs font-semibold text-slate-300 block mb-1.5">Watermark Type</label>
-                    <div className="grid grid-cols-4 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <div className="grid grid-cols-4 gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                       {[
                         { id: "image", label: "Logo", icon: ImageIcon },
                         { id: "text", label: "Text", icon: Type },
@@ -801,7 +801,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                         {selectedResolution === "720p" ? "⚡ 50% Faster + Half Upload Size" : selectedResolution === "1080p" ? "Full HD (Original)" : "🚀 Ultra Fast (Small File)"}
                       </span>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <div className="grid grid-cols-3 gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                       {[
                         { id: "720p", label: "720p HD", desc: "⚡ Fast (Recommended)" },
                         { id: "1080p", label: "1080p", desc: "Original Native" },
@@ -827,7 +827,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
 
                   {/* Logo Options */}
                   {(watermarkType === "image" || watermarkType === "both") && (
-                    <div className="space-y-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                    <div className="space-y-3 bg-zinc-950/60 p-4 rounded-xl border border-zinc-800">
                       <span className="text-xs font-bold text-blue-400 uppercase tracking-wider block">
                         Select Logo Asset
                       </span>
@@ -844,7 +844,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                             className={`p-2.5 rounded-lg border text-left transition flex flex-col gap-2 ${
                               selectedLogo.id === logo.id
                                 ? "bg-blue-600/10 border-blue-500 text-white"
-                                : "bg-slate-900 border-slate-800 text-slate-400"
+                                : "bg-zinc-950 border-zinc-800 text-slate-400"
                             } disabled:opacity-50`}>
                             <div className="h-8 flex items-center justify-center bg-black/40 rounded p-1">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -856,7 +856,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       </div>
 
                       {/* Scale & Opacity */}
-                      <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <div className="space-y-2 pt-2 border-t border-zinc-800">
                         <div className="flex justify-between text-xs text-slate-300">
                           <span>Scale ({Math.round(imageScale * 100)}%)</span>
                           <span>Opacity ({Math.round(imageOpacity * 100)}%)</span>
@@ -892,7 +892,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                               type="button"
                               disabled={watermarkStatus === "done"}
                               onClick={() => applyImagePreset(p as any)}
-                              className="px-2 py-1 text-[10px] bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded capitalize disabled:opacity-50">
+                              className="px-2 py-1 text-[10px] bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded capitalize disabled:opacity-50">
                               {p.replace("-", " ")}
                             </button>
                           ))}
@@ -903,7 +903,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
 
                   {/* Text Badge Options */}
                   {(watermarkType === "text" || watermarkType === "both") && (
-                    <div className="space-y-3 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                    <div className="space-y-3 bg-zinc-950/60 p-4 rounded-xl border border-zinc-800">
                       <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block">
                         Text Overlay
                       </span>
@@ -913,7 +913,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                         value={watermarkText}
                         onChange={(e) => setWatermarkText(e.target.value)}
                         placeholder="e.g. Union Education"
-                        className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-white disabled:opacity-50"
+                        className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white disabled:opacity-50"
                       />
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -951,7 +951,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
               {/* TAB 2: YouTube Metadata */}
               {activeTab === "youtube" && (
                 <div className="space-y-4">
-                  <div className="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <div className="bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-red-600 flex items-center justify-center font-bold text-white text-xs">
                         UE
@@ -978,7 +978,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       maxLength={100}
                       value={customTitle}
                       onChange={(e) => setCustomTitle(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white"
                     />
                   </div>
 
@@ -997,7 +997,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                           className={`p-2.5 rounded-xl border text-left transition ${
                             privacyStatus === item.id
                               ? "bg-red-600/10 border-red-500 text-white"
-                              : "bg-slate-950 border-slate-800 text-slate-400"
+                              : "bg-zinc-950 border-zinc-800 text-slate-400"
                           }`}>
                           <div className="text-xs font-bold">{item.label}</div>
                           <div className="text-[10px] text-slate-400">{item.desc}</div>
@@ -1012,7 +1012,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       rows={3}
                       value={customDescription}
                       onChange={(e) => setCustomDescription(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white"
                     />
                   </div>
                 </div>
@@ -1020,11 +1020,11 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
             </div>
 
             {/* Bottom 2-Step Action Footer */}
-            <div className="pt-4 border-t border-slate-800 space-y-3">
+            <div className="pt-4 border-t border-zinc-800 space-y-3">
               
               {/* Watermark Rendering Progress Bar */}
               {watermarkStatus === "rendering" && (
-                <div className="bg-slate-950 border border-blue-500/40 rounded-xl p-3.5 space-y-2">
+                <div className="bg-zinc-950 border border-blue-500/40 rounded-xl p-3.5 space-y-2">
                   <div className="flex items-center justify-between text-xs font-semibold text-blue-400">
                     <span className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
@@ -1034,7 +1034,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       {watermarkProgressPercent}%
                     </span>
                   </div>
-                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
                     <div
                       className="bg-blue-600 h-full rounded-full transition-all duration-300"
                       style={{ width: `${watermarkProgressPercent}%` }}
@@ -1059,7 +1059,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
 
               {/* YouTube Uploading Progress */}
               {uploadStatus === "uploading" && (
-                <div className="bg-slate-950 border border-red-500/40 rounded-xl p-3.5 space-y-2">
+                <div className="bg-zinc-950 border border-red-500/40 rounded-xl p-3.5 space-y-2">
                   <div className="flex items-center justify-between text-xs font-semibold text-red-400">
                     <span className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-red-400" />
@@ -1069,7 +1069,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       {uploadProgressPercent}%
                     </span>
                   </div>
-                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
                     <div
                       className="bg-gradient-to-r from-red-500 to-amber-500 h-full rounded-full transition-all duration-300"
                       style={{ width: `${uploadProgressPercent}%` }}
@@ -1129,7 +1129,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2.5 rounded-xl border border-slate-700 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition">
+                  className="px-4 py-2.5 rounded-xl border border-zinc-800 text-xs font-semibold text-slate-300 hover:bg-zinc-900 transition">
                   {uploadStatus === "done" ? "Close Studio" : "Cancel"}
                 </button>
 

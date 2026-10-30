@@ -188,29 +188,22 @@ export default function ActivityLogsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <Navbar
-        userRole={userRole}
-        userEmail={user?.primaryEmailAddress?.emailAddress}
-        onOpenQueue={() => setQueueDrawerOpen(true)}
-      />
-
-      <main className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full flex-1">
-        {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-800">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
+      {/* Page Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-zinc-800">
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <div className="p-2.5 bg-gradient-to-tr from-rose-600 to-indigo-600 rounded-xl shadow-md text-white">
                 <History className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
                   <span>Activity Logs &amp; Upload History</span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30">
                     {totalCount} Total Logs
                   </span>
                 </h1>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Comprehensive audit trail of Zoom recording downloads, watermark rendering, and YouTube uploads.
                 </p>
               </div>
@@ -224,12 +217,12 @@ export default function ActivityLogsPage() {
               onClick={() => setAutoRefresh(!autoRefresh)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition ${
                 autoRefresh
-                  ? "bg-emerald-950/60 border-emerald-800 text-emerald-400"
-                  : "bg-slate-900 border-slate-700 text-slate-400"
+                  ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400"
+                  : "bg-white dark:bg-black border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400"
               }`}>
               <span
                 className={`w-2 h-2 rounded-full ${
-                  autoRefresh ? "bg-emerald-400 animate-pulse" : "bg-slate-500"
+                  autoRefresh ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse" : "bg-slate-400 dark:bg-slate-500"
                 }`}
               />
               <span>Live {autoRefresh ? "ON (15s)" : "Paused"}</span>
@@ -240,8 +233,8 @@ export default function ActivityLogsPage() {
               type="button"
               onClick={() => fetchLogs(currentPage, pageSize, statusFilter, searchQuery)}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl shadow-sm transition disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-400" : ""}`} />
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-black hover:bg-slate-100 dark:hover:bg-zinc-850 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-sm transition disabled:opacity-50">
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-500" : ""}`} />
               <span>Refresh</span>
             </button>
 
@@ -251,7 +244,7 @@ export default function ActivityLogsPage() {
                 type="button"
                 onClick={handleClearLogs}
                 disabled={clearing || totalCount === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-400 hover:text-red-300 bg-red-950/40 hover:bg-red-950/70 border border-red-800/60 rounded-xl transition disabled:opacity-40">
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-red-400 hover:text-rose-700 dark:hover:text-red-300 bg-rose-50 dark:bg-red-950/40 hover:bg-rose-100 dark:hover:bg-red-950/70 border border-rose-200 dark:border-red-800/60 rounded-xl transition disabled:opacity-40">
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{clearing ? "Clearing..." : "Clear Logs"}</span>
               </button>
@@ -260,9 +253,9 @@ export default function ActivityLogsPage() {
         </div>
 
         {/* Main Card with Toolbar & Table */}
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 shadow-xl overflow-hidden flex flex-col">
+        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
           {/* Controls / Filter Bar */}
-          <div className="p-4 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/90">
+          <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/80 dark:bg-black">
             {/* Search Input */}
             <div className="relative flex-1 max-w-md">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -274,7 +267,7 @@ export default function ActivityLogsPage() {
                   setSearchQuery(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="w-full pl-9 pr-8 py-1.5 text-xs bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent transition"
+                className="w-full pl-9 pr-8 py-1.5 text-xs bg-white dark:bg-zinc-950 border border-slate-300 dark:border-zinc-800 rounded-xl text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent transition"
               />
               {searchQuery && (
                 <button
@@ -283,7 +276,7 @@ export default function ActivityLogsPage() {
                     setSearchQuery("");
                     setCurrentPage(1);
                   }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs">
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs">
                   ✕
                 </button>
               )}
@@ -309,7 +302,7 @@ export default function ActivityLogsPage() {
                     className={`px-3 py-1.5 text-xs font-semibold rounded-xl capitalize transition ${
                       active
                         ? "bg-rose-600 text-white shadow-sm"
-                        : "bg-slate-950/80 text-slate-400 border border-slate-800 hover:bg-slate-800 hover:text-slate-200"
+                        : "bg-white dark:bg-zinc-950 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 hover:text-slate-900 dark:hover:text-slate-200"
                     }`}>
                     {tab.label}
                   </button>
@@ -327,19 +320,19 @@ export default function ActivityLogsPage() {
               </div>
             ) : logs.length === 0 ? (
               <div className="text-center py-16 space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center mx-auto text-slate-400">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-center mx-auto text-slate-400">
                   <History className="w-6 h-6" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-200">No activity logs recorded</h3>
-                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200">No activity logs recorded</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                   {searchQuery || statusFilter !== "all"
                     ? "No logs match the current search or status filter."
                     : "Activity logs will automatically populate here whenever a video is downloaded, watermarked, or uploaded."}
                 </p>
               </div>
             ) : (
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-800 select-none">
+              <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                <thead className="bg-slate-50/80 dark:bg-zinc-950 text-slate-600 dark:text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800 select-none">
                   <tr>
                     <th className="py-3 px-3 w-10 text-center">Status</th>
                     <th className="py-3 px-3">Topic / Class Name</th>
@@ -351,7 +344,7 @@ export default function ActivityLogsPage() {
                     <th className="py-3 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/80">
+                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80">
                   {logs.map((log) => {
                     const isExpanded = expandedLogId === log.id;
                     const isSuccess = log.status === "success";
@@ -361,8 +354,8 @@ export default function ActivityLogsPage() {
                     return (
                       <React.Fragment key={log.id}>
                         <tr
-                          className={`hover:bg-slate-800/40 transition cursor-pointer ${
-                            isExpanded ? "bg-slate-800/50" : ""
+                          className={`hover:bg-slate-50/80 dark:hover:bg-zinc-900/50 transition cursor-pointer ${
+                            isExpanded ? "bg-slate-100/70 dark:bg-zinc-900/60" : ""
                           }`}
                           onClick={() =>
                             setExpandedLogId(isExpanded ? null : log.id)
@@ -370,17 +363,17 @@ export default function ActivityLogsPage() {
                           {/* Status Icon */}
                           <td className="py-3 px-3 text-center">
                             {isSuccess ? (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 mx-auto" />
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 mx-auto" />
                             ) : isFailed ? (
-                              <XCircle className="w-4 h-4 text-rose-400 mx-auto" />
+                              <XCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 mx-auto" />
                             ) : (
-                              <Loader2 className="w-4 h-4 text-blue-400 animate-spin mx-auto" />
+                              <Loader2 className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-spin mx-auto" />
                             )}
                           </td>
 
                           {/* Topic & Custom Title */}
                           <td className="py-3 px-3">
-                            <div className="font-bold text-slate-100 max-w-xs truncate">
+                            <div className="font-bold text-slate-900 dark:text-slate-100 max-w-xs truncate">
                               {log.customTitle || log.topic}
                             </div>
                             {log.customTitle && log.customTitle !== log.topic && (
@@ -394,31 +387,31 @@ export default function ActivityLogsPage() {
                           </td>
 
                           {/* Account */}
-                          <td className="py-3 px-3 whitespace-nowrap text-slate-400">
-                            <span className="bg-slate-800/70 border border-slate-700/60 px-2 py-0.5 rounded-lg text-[11px] font-medium text-slate-300">
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                            <span className="bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-2 py-0.5 rounded-lg text-[11px] font-medium text-slate-700 dark:text-slate-300">
                               {log.accountName || "Zoom Account"}
                             </span>
                           </td>
 
                           {/* Date */}
-                          <td className="py-3 px-3 whitespace-nowrap text-slate-400">
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                             {formatDate(log.startedAt)}
                           </td>
 
                           {/* Process Duration */}
-                          <td className="py-3 px-3 whitespace-nowrap text-slate-400 font-mono">
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono">
                             {formatDurationSec(log.durationSeconds)}
                           </td>
 
                           {/* File Size */}
-                          <td className="py-3 px-3 whitespace-nowrap text-slate-400 font-mono">
+                          <td className="py-3 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono">
                             {formatFileSize(log.fileSizeBytes)}
                           </td>
 
                           {/* Watermark & Resolution */}
                           <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-800 border border-slate-700 text-slate-300">
-                              <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300">
+                              <Sparkles className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400" />
                               <span>{log.resolution || "720p"}</span>
                               <span>•</span>
                               <span className="capitalize">{log.watermarkType || "WM"}</span>
@@ -435,8 +428,8 @@ export default function ActivityLogsPage() {
                                   href={log.youtubeUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-800/80 rounded-lg text-xs font-bold transition">
-                                  <Youtube className="w-3.5 h-3.5 text-red-400" />
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800/80 rounded-lg text-xs font-bold transition">
+                                  <Youtube className="w-3.5 h-3.5 text-red-500 dark:text-red-400" />
                                   <span>Watch</span>
                                 </a>
                               )}
@@ -446,7 +439,7 @@ export default function ActivityLogsPage() {
                                 onClick={() =>
                                   setExpandedLogId(isExpanded ? null : log.id)
                                 }
-                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
                                 title="Toggle details">
                                 {isExpanded ? (
                                   <ChevronUp className="w-4 h-4" />
@@ -460,17 +453,17 @@ export default function ActivityLogsPage() {
 
                         {/* Expanded Details Row */}
                         {isExpanded && (
-                          <tr className="bg-slate-950/60 border-y border-slate-800">
+                          <tr className="bg-slate-50 dark:bg-zinc-950 border-y border-slate-200 dark:border-zinc-800">
                             <td colSpan={8} className="p-4">
                               <div className="space-y-3">
                                 {/* Error Details if Failed */}
                                 {log.errorMessage && (
-                                  <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800 text-rose-300 text-xs space-y-1.5">
-                                    <div className="flex items-center gap-1.5 font-bold text-rose-200">
-                                      <AlertCircle className="w-4 h-4 text-rose-400" />
+                                  <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs space-y-1.5">
+                                    <div className="flex items-center gap-1.5 font-bold text-rose-700 dark:text-rose-200">
+                                      <AlertCircle className="w-4 h-4 text-rose-500 dark:text-rose-400" />
                                       <span>Failure Reason:</span>
                                     </div>
-                                    <p className="font-mono text-[11px] whitespace-pre-wrap break-all text-rose-200 bg-black/40 p-2.5 rounded-lg border border-rose-900/50">
+                                    <p className="font-mono text-[11px] whitespace-pre-wrap break-all text-rose-800 dark:text-rose-200 bg-white/80 dark:bg-black/40 p-2.5 rounded-lg border border-rose-200 dark:border-rose-900/50">
                                       {log.errorMessage}
                                     </p>
                                   </div>
@@ -478,23 +471,23 @@ export default function ActivityLogsPage() {
 
                                 {/* YouTube URL box if Success */}
                                 {log.youtubeUrl && (
-                                  <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div className="space-y-0.5 truncate">
-                                      <span className="font-bold text-emerald-200 block">
+                                      <span className="font-bold text-emerald-800 dark:text-emerald-200 block">
                                         YouTube Video Link:
                                       </span>
                                       <a
                                         href={log.youtubeUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="text-emerald-400 underline font-mono text-[11px] truncate block">
+                                        className="text-emerald-600 dark:text-emerald-400 underline font-mono text-[11px] truncate block">
                                         {log.youtubeUrl}
                                       </a>
                                     </div>
                                     <button
                                       type="button"
                                       onClick={() => handleCopy(log.youtubeUrl!, log.id)}
-                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-900/60 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition self-start sm:self-auto shrink-0">
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition self-start sm:self-auto shrink-0 shadow-xs">
                                       <Copy className="w-3.5 h-3.5" />
                                       <span>{copiedId === log.id ? "Copied!" : "Copy URL"}</span>
                                     </button>
@@ -502,21 +495,21 @@ export default function ActivityLogsPage() {
                                 )}
 
                                 {/* Job Metadata Details Grid */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-900 p-3 rounded-xl border border-slate-800 text-slate-400">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-100 dark:bg-black p-3 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400">
                                   <div>
-                                    <strong className="text-slate-300 block">Zoom File ID:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">Zoom File ID:</strong>
                                     <span className="font-mono text-[10px] break-all">{log.fileId}</span>
                                   </div>
                                   <div>
-                                    <strong className="text-slate-300 block">Started:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">Started:</strong>
                                     <span>{formatDate(log.startedAt)}</span>
                                   </div>
                                   <div>
-                                    <strong className="text-slate-300 block">Completed:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">Completed:</strong>
                                     <span>{formatDate(log.completedAt)}</span>
                                   </div>
                                   <div>
-                                    <strong className="text-slate-300 block">Target Resolution:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">Target Resolution:</strong>
                                     <span>{log.resolution || "720p"}</span>
                                   </div>
                                 </div>
@@ -548,7 +541,6 @@ export default function ActivityLogsPage() {
             disabled={loading}
           />
         </div>
-      </main>
 
       {/* Floating Upload Queue Drawer */}
       <UploadQueueDrawer

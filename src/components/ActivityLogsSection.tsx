@@ -203,32 +203,32 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+    <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black p-6 shadow-sm dark:shadow-xl space-y-6">
       {/* Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-zinc-800 pb-5">
         <div className="flex items-start gap-3">
-          <div className="p-3 bg-red-50 text-red-600 rounded-xl border border-red-100 mt-0.5">
+          <div className="p-3 bg-red-50 dark:bg-rose-950/40 text-red-600 dark:text-rose-400 rounded-xl border border-red-100 dark:border-rose-900/50 mt-0.5">
             <History className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                 Activity Logs &amp; Upload History
               </h2>
               {/* Network connection badge with Auto-Resume indication */}
               {isOnline ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  <Wifi className="w-3 h-3 text-emerald-600" />
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                  <Wifi className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                   Network Online &bull; Auto-Resume Active
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-300 animate-pulse">
-                  <WifiOff className="w-3 h-3 text-amber-600" />
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800 animate-pulse">
+                  <WifiOff className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                   Network Disconnected &bull; Will Resume on Regain
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Live audit trail of all Zoom recordings downloaded, watermarked, and uploaded to YouTube with metadata and error diagnostics.
             </p>
           </div>
@@ -237,7 +237,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
           <Link
             href="/dashboard/activity"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg shadow-sm transition">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800 rounded-lg shadow-sm transition">
             <History className="w-3.5 h-3.5" />
             <span>Full Logs &amp; Pagination &rarr;</span>
           </Link>
@@ -245,7 +245,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           <button
             onClick={fetchLogs}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg shadow-sm transition disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-sm transition disabled:opacity-50"
             title="Refresh logs">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>Refresh</span>
@@ -255,7 +255,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
             <button
               onClick={handleClearLogs}
               disabled={clearing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg shadow-sm transition disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800 rounded-lg shadow-sm transition disabled:opacity-50">
               {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
               <span>Clear History</span>
             </button>
@@ -265,14 +265,14 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
 
       {/* Network Alert Banner (if offline) */}
       {!isOnline && (
-        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-amber-800 text-xs">
+        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center justify-between gap-3 text-amber-800 dark:text-amber-300 text-xs">
           <div className="flex items-center gap-2.5">
-            <WifiOff className="w-4 h-4 text-amber-600 shrink-0" />
+            <WifiOff className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span>
               <strong>Internet connection dropped.</strong> Active downloads and YouTube uploads are automatically paused and will resume seamlessly once connection returns.
             </span>
           </div>
-          <span className="font-semibold text-amber-900 bg-amber-100 px-2 py-0.5 rounded text-[11px] shrink-0">
+          <span className="font-semibold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5 rounded text-[11px] shrink-0">
             Auto-reconnecting...
           </span>
         </div>
@@ -284,8 +284,8 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           onClick={() => changeStatusFilter("all")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "all"
-              ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-              : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+              ? "bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600 shadow-sm"
+              : "bg-slate-50 dark:bg-zinc-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900"
           }`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium">Total Events</span>
@@ -299,7 +299,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "success"
               ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-              : "bg-emerald-50/60 text-emerald-800 border-emerald-200 hover:bg-emerald-100/60"
+              : "bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/40"
           }`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold">Uploaded</span>
@@ -313,7 +313,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "failed"
               ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-              : "bg-rose-50/60 text-rose-800 border-rose-200 hover:bg-rose-100/60"
+              : "bg-rose-50/60 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 hover:bg-rose-100/60 dark:hover:bg-rose-900/40"
           }`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold">Failed</span>
@@ -327,7 +327,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "processing"
               ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-              : "bg-blue-50/60 text-blue-800 border-blue-200 hover:bg-blue-100/60"
+              : "bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 hover:bg-blue-100/60 dark:hover:bg-blue-900/40"
           }`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold">In Progress</span>
@@ -349,7 +349,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg bg-slate-50/50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition"
+            className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg bg-slate-50/50 dark:bg-zinc-950 text-slate-900 dark:text-white focus:bg-white dark:focus:bg-black focus:ring-2 focus:ring-blue-500 outline-none transition"
           />
           {searchQuery && (
             <button
@@ -357,30 +357,30 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                 setSearchQuery("");
                 setCurrentPage(1);
               }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600">
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
               ✕
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 self-end sm:self-auto text-xs text-slate-500">
+        <div className="flex items-center gap-1.5 self-end sm:self-auto text-xs text-slate-500 dark:text-slate-400">
           <span>Showing {filteredLogs.length} of {logs.length} logs</span>
         </div>
       </div>
 
       {/* Logs Table / List */}
       {filteredLogs.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50 space-y-2">
-          <History className="w-8 h-8 text-slate-300 mx-auto mb-1" />
-          <p className="text-sm font-semibold text-slate-700">No activity logs recorded yet</p>
+        <div className="text-center py-12 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50/50 dark:bg-black space-y-2">
+          <History className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-1" />
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">No activity logs recorded yet</p>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
             When recordings are downloaded, watermarked, or uploaded to YouTube from the queue or Watermark Studio, detailed audit logs will appear here.
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+        <div className="overflow-x-auto border border-slate-200 dark:border-zinc-800 rounded-xl">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+            <thead className="bg-slate-50 dark:bg-zinc-950 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800">
               <tr>
                 <th className="py-3 px-3.5">Recording &amp; Title</th>
                 <th className="py-3 px-3">Account</th>
@@ -391,7 +391,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                 <th className="py-3 px-3 text-right">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-zinc-850">
               {pagedLogs.map((log) => {
                 const isExpanded = expandedLogId === log.id;
                 const isSuccess = log.status === "success";
@@ -400,14 +400,14 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
 
                 return (
                   <React.Fragment key={log.id}>
-                    <tr className="hover:bg-slate-50/80 transition">
+                    <tr className="hover:bg-slate-50/80 dark:hover:bg-zinc-900/60 transition">
                       {/* Topic & Title */}
                       <td className="py-3.5 px-3.5 max-w-xs">
-                        <div className="font-bold text-slate-900 truncate" title={log.topic}>
+                        <div className="font-bold text-slate-900 dark:text-white truncate" title={log.topic}>
                           {log.customTitle || log.topic}
                         </div>
                         {log.customTitle && log.customTitle !== log.topic && (
-                          <div className="text-[11px] text-slate-500 truncate mt-0.5" title={log.topic}>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5" title={log.topic}>
                             Zoom: {log.topic}
                           </div>
                         )}
@@ -418,13 +418,13 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
 
                       {/* Account */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
-                        <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200">
+                        <span className="inline-block bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-zinc-800">
                           {log.accountName || "Zoom"}
                         </span>
                       </td>
 
                       {/* Date & Time */}
-                      <td className="py-3.5 px-3 whitespace-nowrap text-slate-600">
+                      <td className="py-3.5 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                         <div>{formatDate(log.startedAt)}</div>
                         {log.durationSeconds && log.durationSeconds > 0 ? (
                           <div className="text-[10px] text-slate-400 mt-0.5">
@@ -434,20 +434,20 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                       </td>
 
                       {/* Specs */}
-                      <td className="py-3.5 px-3 whitespace-nowrap text-slate-600">
+                      <td className="py-3.5 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400">
                         <div className="flex items-center gap-1.5">
                           {log.resolution && (
-                            <span className="font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px]">
+                            <span className="font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 rounded text-[10px]">
                               {log.resolution}
                             </span>
                           )}
                           {log.watermarkType && log.watermarkType !== "none" && (
-                            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded">
                               WM
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                           {log.durationMinutes ? `${log.durationMinutes}m` : "—"} &bull; {formatFileSize(log.fileSizeBytes)}
                         </div>
                       </td>
@@ -455,18 +455,18 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                       {/* Status */}
                       <td className="py-3.5 px-3 whitespace-nowrap">
                         {isSuccess ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1 rounded-full">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             Success
                           </span>
                         ) : isFailed ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full">
-                            <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-2.5 py-1 rounded-full">
+                            <XCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                             Failed
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full animate-pulse">
-                            <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 px-2.5 py-1 rounded-full animate-pulse">
+                            <Loader2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-spin" />
                             Processing
                           </span>
                         )}
@@ -480,24 +480,24 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                               href={log.youtubeUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition shadow-sm">
-                              <Youtube className="w-3.5 h-3.5 text-red-600" />
+                              className="inline-flex items-center gap-1 text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-lg transition shadow-sm">
+                              <Youtube className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
                               <span>View on YT</span>
-                              <ArrowUpRight className="w-3 h-3 text-red-600" />
+                              <ArrowUpRight className="w-3 h-3 text-red-600 dark:text-red-400" />
                             </a>
                             <button
                               onClick={() => handleCopy(log.youtubeUrl!, log.id)}
-                              className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                              className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-900 transition"
                               title="Copy YouTube URL">
                               {copiedId === log.id ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" />
                               )}
                             </button>
                           </div>
                         ) : isFailed ? (
-                          <span className="text-[11px] text-rose-600 font-medium">No upload link</span>
+                          <span className="text-[11px] text-rose-600 dark:text-rose-400 font-medium">No upload link</span>
                         ) : (
                           <span className="text-[11px] text-slate-400">Uploading...</span>
                         )}
@@ -509,13 +509,13 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                           {isFailed && onRetryItem && (
                             <button
                               onClick={() => onRetryItem(log)}
-                              className="px-2 py-1 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition">
+                              className="px-2 py-1 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-800 rounded-lg transition">
                               Retry
                             </button>
                           )}
                           <button
                             onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
-                            className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+                            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-900 rounded-lg transition"
                             title="Toggle technical details">
                             {isExpanded ? (
                               <ChevronUp className="w-4 h-4" />
@@ -529,11 +529,11 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
 
                     {/* Expandable Details Drawer */}
                     {isExpanded && (
-                      <tr className="bg-slate-50/70 border-b border-slate-200">
+                      <tr className="bg-slate-50/70 dark:bg-zinc-950/70 border-b border-slate-200 dark:border-zinc-800">
                         <td colSpan={7} className="p-4">
-                          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                            <div className="flex items-center justify-between border-b pb-2">
-                              <span className="text-xs font-bold text-slate-800">
+                          <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black p-4 space-y-3">
+                            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-2">
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                                 Event Diagnostics &amp; Audit Payload
                               </span>
                               <span className="text-[11px] text-slate-400 font-mono">
@@ -545,46 +545,46 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Topic</span>
-                                <span className="font-semibold text-slate-800">{log.topic}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{log.topic}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Account</span>
-                                <span className="font-semibold text-slate-800">{log.accountName || "Zoom"}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{log.accountName || "Zoom"}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Resolution / Quality</span>
-                                <span className="font-semibold text-slate-800">{log.resolution || "Original"}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{log.resolution || "Original"}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Watermark Style</span>
-                                <span className="font-semibold text-slate-800">{log.watermarkType || "None"}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{log.watermarkType || "None"}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Privacy Status</span>
-                                <span className="font-semibold text-slate-800 uppercase">{log.privacyStatus || "Unlisted"}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200 uppercase">{log.privacyStatus || "Unlisted"}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Video Length</span>
-                                <span className="font-semibold text-slate-800">{log.durationMinutes ? `${log.durationMinutes} mins` : "—"}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{log.durationMinutes ? `${log.durationMinutes} mins` : "—"}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Size on Disk</span>
-                                <span className="font-semibold text-slate-800">{formatFileSize(log.fileSizeBytes)}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{formatFileSize(log.fileSizeBytes)}</span>
                               </div>
                               <div>
                                 <span className="text-slate-400 block text-[10px]">Processing Elapsed</span>
-                                <span className="font-semibold text-slate-800">{formatDurationSec(log.durationSeconds)}</span>
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{formatDurationSec(log.durationSeconds)}</span>
                               </div>
                             </div>
 
                             {/* Error Details if Failed */}
                             {log.errorMessage && (
-                              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
+                              <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs space-y-1">
                                 <div className="flex items-center gap-1.5 font-bold">
-                                  <AlertCircle className="w-4 h-4 text-rose-600" />
+                                  <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
                                   <span>Failure Reason:</span>
                                 </div>
-                                <p className="font-mono text-[11px] whitespace-pre-wrap break-all text-rose-900 bg-white/70 p-2 rounded border border-rose-100">
+                                <p className="font-mono text-[11px] whitespace-pre-wrap break-all text-rose-900 dark:text-rose-200 bg-white/70 dark:bg-black/40 p-2 rounded border border-rose-100 dark:border-rose-900/50">
                                   {log.errorMessage}
                                 </p>
                               </div>
@@ -592,20 +592,20 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
 
                             {/* YouTube URL box if Success */}
                             {log.youtubeUrl && (
-                              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between gap-3">
+                              <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between gap-3">
                                 <div className="space-y-0.5 truncate">
-                                  <span className="font-bold text-emerald-900 block">YouTube Link Published:</span>
+                                  <span className="font-bold text-emerald-900 dark:text-emerald-200 block">YouTube Link Published:</span>
                                   <a
                                     href={log.youtubeUrl}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="text-emerald-700 underline font-mono text-[11px] truncate block">
+                                    className="text-emerald-700 dark:text-emerald-400 underline font-mono text-[11px] truncate block">
                                     {log.youtubeUrl}
                                   </a>
                                 </div>
                                 <button
                                   onClick={() => handleCopy(log.youtubeUrl!, log.id)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-300 rounded text-xs font-semibold text-emerald-800 hover:bg-emerald-100/50 transition shrink-0">
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-zinc-900 border border-emerald-300 dark:border-emerald-700 rounded text-xs font-semibold text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100/50 dark:hover:bg-zinc-800 transition shrink-0">
                                   {copiedId === log.id ? "Copied!" : "Copy URL"}
                                 </button>
                               </div>
