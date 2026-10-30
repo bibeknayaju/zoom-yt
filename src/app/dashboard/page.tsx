@@ -627,7 +627,7 @@ export default function ZoomYouTubeDashboardPage() {
       if (data.success) {
         showToast({
           type: "success",
-          title: "🚀 Cloud Runner Dispatched!",
+          title: "Cloud Runner Dispatched",
           message: "GitHub Actions runner is booting up now. It will process all queued videos sequentially in a single runner run.",
           action: {
             label: "View Live Runs ↗",
@@ -724,7 +724,7 @@ export default function ZoomYouTubeDashboardPage() {
         setQueueDrawerOpen(true);
         showToast({
           type: "success",
-          title: `⚡ Started ${recsToEnqueue.length} Task${recsToEnqueue.length > 1 ? "s" : ""} on Laptop`,
+          title: `Started ${recsToEnqueue.length} Task${recsToEnqueue.length > 1 ? "s" : ""} on Laptop`,
           message: "Live stream downloading, watermarking per-frame, and YouTube upload underway.",
         });
       } else {
@@ -734,10 +734,10 @@ export default function ZoomYouTubeDashboardPage() {
         const totalWaiting = recordings.filter((r) => r.status === "queued").length + recsToEnqueue.length;
         showToast({
           type: "info",
-          title: `☁️ Queued ${recsToEnqueue.length} Video${recsToEnqueue.length > 1 ? "s" : ""} for Cloud Runner`,
+          title: `Queued ${recsToEnqueue.length} Video${recsToEnqueue.length > 1 ? "s" : ""} for Cloud Runner`,
           message: `${totalWaiting} video${totalWaiting === 1 ? "" : "s"} ready in backlog. Click "Run Cloud Runner" to process all at once.`,
           action: {
-            label: "Run Now 🚀",
+            label: "Run Now",
             onClick: handleTriggerCloudRunner,
           },
         });
@@ -786,15 +786,21 @@ export default function ZoomYouTubeDashboardPage() {
   };
 
   const [showDevicesSection, setShowDevicesSection] = useState(false);
+  const [dismissedStorageWarning, setDismissedStorageWarning] = useState(false);
 
   const physicalDevices = devices.filter(
     (d) => !d.nodeId.startsWith("github-") && !d.label?.toLowerCase().includes("cloud")
   );
 
-  // Check if any physical device has storage warnings
-  const storageWarnings = physicalDevices.filter(
-    (d) => d.system?.storage?.status === "warning" || d.system?.storage?.status === "critical",
-  );
+  // Check if any physical device has storage warnings - only relevant when processing on local laptop, laptop is online, and not dismissed
+  const storageWarnings = dismissedStorageWarning
+    ? []
+    : physicalDevices.filter(
+        (d) =>
+          processingTarget === "local" &&
+          d.isOnline &&
+          (d.system?.storage?.status === "warning" || d.system?.storage?.status === "critical")
+      );
 
   const localWorkersOnline = physicalDevices.filter((d) => d.isOnline);
 
@@ -840,9 +846,9 @@ export default function ZoomYouTubeDashboardPage() {
               <button
                 type="button"
                 onClick={() => handleSetProcessingTarget("local")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                   processingTarget === "local"
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 }`}>
                 <Laptop className="w-3.5 h-3.5" />
@@ -851,9 +857,9 @@ export default function ZoomYouTubeDashboardPage() {
               <button
                 type="button"
                 onClick={() => handleSetProcessingTarget("cloud")}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                   processingTarget === "cloud"
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 }`}>
                 <Cloud className="w-3.5 h-3.5" />
@@ -877,106 +883,72 @@ export default function ZoomYouTubeDashboardPage() {
           </div>
         </div>
 
-      {/* Processing Location Selector */}
-      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl p-6 shadow-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* Critical / Warning Storage Banner (Only shown if local processing is selected, device is online, and not dismissed) */}
+      {storageWarnings.length > 0 && (
+        <div className="rounded-xl border border-amber-300/80 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 p-4 shadow-xs flex items-start justify-between gap-3 transition">
           <div className="flex items-start gap-3">
-            <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
-              <Cloud className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">Processing Location</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Choose where queued recordings are downloaded, watermarked, and uploaded.
-              </p>
+            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Low Storage Warning Detected
+              </h3>
+              {storageWarnings.map((d) => (
+                <p key={d.nodeId} className="text-xs text-amber-800 dark:text-amber-300/90">
+                  <span className="font-semibold text-amber-950 dark:text-amber-100">{d.label}</span> has only{" "}
+                  <span className="font-bold">{d.system.storage.freeGB} GB</span> free storage
+                  remaining (threshold: 20 GB). Local tasks may fail if disk fills up.
+                </p>
+              ))}
+              <div className="pt-1.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSetProcessingTarget("cloud")}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition shadow-xs">
+                  <Cloud className="w-3.5 h-3.5" />
+                  Switch to GitHub Cloud (No Local Disk Needed)
+                </button>
+              </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full lg:w-auto">
-            <button
-              type="button"
-              onClick={() => handleSetProcessingTarget("local")}
-              className={`relative text-left rounded-xl border p-3.5 transition ${
-                processingTarget === "local"
-                  ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-500/10"
-                  : "border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-950/80 hover:border-slate-300 dark:hover:border-zinc-700"
-              }`}>
-              <div className="flex items-center gap-2">
-                <Laptop className={`w-4 h-4 ${processingTarget === "local" ? "text-indigo-400" : "text-slate-400"}`} />
-                <span className="text-sm font-bold text-slate-900 dark:text-white">Local Laptop</span>
-                {processingTarget === "local" && (
-                  <CheckCircle2 className="w-4 h-4 text-indigo-400 ml-auto" />
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Tasks begin immediately on this local machine with hardware-accelerated watermarking.
-              </p>
-              <span
-                className={`inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border ${
-                  localWorkersOnline.length > 0
-                    ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
-                    : "text-amber-400 bg-amber-500/10 border-amber-500/30"
-                }`}>
-                <Radio className="w-2.5 h-2.5" />
-                {localWorkersOnline.length > 0
-                  ? `${localWorkersOnline.length} laptop${localWorkersOnline.length > 1 ? "s" : ""} online`
-                  : "No laptop online"}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSetProcessingTarget("cloud")}
-              className={`relative text-left rounded-xl border p-3.5 transition ${
-                processingTarget === "cloud"
-                  ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-500/10"
-                  : "border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-950/80 hover:border-slate-300 dark:hover:border-zinc-700"
-              }`}>
-              <div className="flex items-center gap-2">
-                <Cloud className={`w-4 h-4 ${processingTarget === "cloud" ? "text-indigo-400" : "text-slate-400"}`} />
-                <span className="text-sm font-bold text-slate-900 dark:text-white">GitHub Workflow</span>
-                {processingTarget === "cloud" && (
-                  <CheckCircle2 className="w-4 h-4 text-indigo-400 ml-auto" />
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Queue all videos into database backlog, then trigger one GitHub run to process all at once.
-              </p>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border text-purple-400 bg-purple-500/10 border-purple-500/30">
-                <Cloud className="w-2.5 h-2.5" />
-                Cloud Batch Runner
-              </span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setDismissedStorageWarning(true)}
+            className="text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200 p-1 rounded-lg transition"
+            title="Dismiss warning">
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      )}
 
-        {processingTarget === "cloud" && (
-          <div className="mt-4 rounded-xl border border-purple-200/90 dark:border-zinc-800 bg-gradient-to-r from-purple-50/80 via-indigo-50/40 to-slate-50/50 dark:from-black dark:via-black dark:to-black p-4 shadow-xs space-y-3.5">
+      {/* Active Runner Control Panel */}
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black p-5 shadow-xs">
+        {processingTarget === "cloud" ? (
+          <div className="space-y-4">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
-                    className={`inline-flex items-center gap-1.5 font-bold text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
+                    className={`inline-flex items-center gap-1.5 font-semibold text-xs px-2.5 py-1 rounded-full border transition-colors ${
                       cloudWorkersOnline.length > 0
-                        ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 shadow-xs animate-pulse"
-                        : "text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border-slate-300 dark:border-zinc-800 shadow-xs"
+                        ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800"
+                        : "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800"
                     }`}>
-                    <Radio className={`w-3 h-3 ${cloudWorkersOnline.length > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`} />
+                    <Radio className={`w-3 h-3 ${cloudWorkersOnline.length > 0 ? "text-emerald-600 dark:text-emerald-400 animate-pulse" : "text-slate-400 dark:text-zinc-500"}`} />
                     {cloudWorkersOnline.length > 0
-                      ? `🟢 Cloud Runner Active (${cloudWorkersOnline[0].label})`
-                      : "💤 Cloud Runner Idle (Ready for batch run)"}
+                      ? `Cloud Runner Active (${cloudWorkersOnline[0].label})`
+                      : "Cloud Runner Idle (Ready for batch run)"}
                   </span>
 
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-zinc-900 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-zinc-800">
-                    <Clock className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-800">
+                    <Clock className="w-3 h-3 text-slate-400 dark:text-zinc-500" />
                     <span>
                       {queuedCloudRecordings.length} video{queuedCloudRecordings.length === 1 ? "" : "s"} waiting in cloud queue
                     </span>
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
-                  Add all ~12 of your daily class recordings to the queue first. Then click <strong className="font-semibold text-slate-900 dark:text-white">Run Cloud Runner Now</strong> once — GitHub Actions boots a 4-core runner to stream, watermark, and upload all queued videos sequentially in a single run.
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
+                  GitHub Actions runner streams, watermarks, and uploads queued recordings sequentially in a single automated cloud run.
                 </p>
               </div>
 
@@ -985,22 +957,18 @@ export default function ZoomYouTubeDashboardPage() {
                   type="button"
                   onClick={handleTriggerCloudRunner}
                   disabled={triggeringRunner}
-                  className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 ${
-                    queuedCloudRecordings.length > 0
-                      ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 ring-2 ring-purple-300 dark:ring-purple-900"
-                      : "bg-slate-900 hover:bg-slate-800 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-700 dark:border-zinc-800"
-                  }`}>
+                  className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 rounded-xl transition shadow-xs disabled:opacity-50">
                   {triggeringRunner ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Cloud className="w-4 h-4 text-purple-200" />
+                    <Cloud className="w-3.5 h-3.5" />
                   )}
                   <span>
                     {triggeringRunner
-                      ? "Dispatching Workflow..."
+                      ? "Dispatching..."
                       : queuedCloudRecordings.length > 0
-                      ? `🚀 Run Cloud Runner Now (${queuedCloudRecordings.length} queued)`
-                      : "🚀 Run Cloud Runner Now"}
+                      ? `Run Cloud Runner (${queuedCloudRecordings.length} queued)`
+                      : "Run Cloud Runner Now"}
                   </span>
                 </button>
 
@@ -1008,7 +976,7 @@ export default function ZoomYouTubeDashboardPage() {
                   href="https://github.com/bibeknayaju/zoom-yt/actions"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs"
                   title="Open GitHub Actions workflows tab in a new window">
                   <span>View Live Runs</span>
                   <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
@@ -1016,80 +984,67 @@ export default function ZoomYouTubeDashboardPage() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-purple-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 flex-wrap gap-2">
+            <div className="pt-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 flex-wrap gap-2">
               <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span>Automated batch schedule: <strong className="font-semibold text-slate-900 dark:text-white">7:45 AM & 10:30 PM NPT</strong> daily (automatically drains backlog)</span>
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Automated batch schedule: <strong className="font-semibold text-slate-800 dark:text-slate-200">7:45 AM & 10:30 PM NPT</strong> daily</span>
               </span>
-              <span className="text-slate-400">Single runner execution • Zero rate-limit waste</span>
+              <span className="text-slate-400 dark:text-zinc-500">Zero rate-limit waste • Isolated cloud runner</span>
             </div>
           </div>
-        )}
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center gap-1.5 font-semibold text-xs px-2.5 py-1 rounded-full border ${
+                      localWorkerRunning
+                        ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800"
+                        : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800"
+                    }`}>
+                    <Radio className={`w-2.5 h-2.5 ${localWorkerRunning ? "animate-pulse text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
+                    Local Worker: {localWorkerRunning ? "Running" : "Stopped"}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {localWorkersOnline.length > 0
+                      ? `${localWorkersOnline.length} laptop online`
+                      : "No laptop registered"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {workerMsg || "Local worker processes queued recordings on this laptop using local FFmpeg."}
+                </p>
+              </div>
 
-        {processingTarget === "local" && (
-          <div className="mt-3 rounded-lg border border-indigo-100 dark:border-indigo-950/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs">
-              <span
-                className={`inline-flex items-center gap-1.5 font-semibold px-2 py-0.5 rounded-full border ${
+              <button
+                type="button"
+                onClick={() => handleToggleLocalWorker(localWorkerRunning ? "stop" : "start")}
+                disabled={workerBusy}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl border transition disabled:opacity-50 shrink-0 ${
                   localWorkerRunning
-                    ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800"
-                    : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800"
+                    ? "text-rose-700 dark:text-rose-300 bg-white dark:bg-zinc-900 border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                    : "text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100"
                 }`}>
-                <Radio className={`w-2.5 h-2.5 ${localWorkerRunning ? "animate-pulse text-emerald-600 dark:text-emerald-400" : ""}`} />
-                npm run worker: {localWorkerRunning ? "Running" : "Stopped"}
-              </span>
-              <span className="text-slate-500 dark:text-slate-400">
-                {workerMsg || "Local worker picks up recordings targeted at this laptop."}
-              </span>
+                {workerBusy ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : localWorkerRunning ? (
+                  <span className="w-2.5 h-2.5 rounded-xs bg-rose-500" />
+                ) : (
+                  <Play className="w-3 h-3 fill-current" />
+                )}
+                {workerBusy ? "Working..." : localWorkerRunning ? "Stop Local Worker" : "Start Local Worker"}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => handleToggleLocalWorker(localWorkerRunning ? "stop" : "start")}
-              disabled={workerBusy}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border shadow-sm transition disabled:opacity-50 self-start sm:self-auto ${
-                localWorkerRunning
-                  ? "text-rose-700 dark:text-rose-300 bg-white dark:bg-black border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                  : "text-white bg-indigo-600 border-indigo-600 hover:bg-indigo-700"
-              }`}>
-              {workerBusy ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : localWorkerRunning ? (
-                <span className="w-3 h-3 rounded-sm bg-rose-500" />
-              ) : (
-                <Play className="w-3 h-3 fill-current" />
-              )}
-              {workerBusy ? "Working..." : localWorkerRunning ? "Stop Worker" : "Start npm run worker"}
-            </button>
-          </div>
-        )}
 
-        {processingTarget === "local" && localWorkersOnline.length === 0 && (
-          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-3">
-            ⚠️ No local laptop worker is online yet. It may take a few seconds to register after starting. If it still doesn&apos;t appear, run <code className="font-semibold">npm run worker</code> manually, or switch to GitHub Cloud.
-          </p>
+            {localWorkersOnline.length === 0 && (
+              <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-lg p-2.5">
+                No local laptop worker is registered. If starting doesn&apos;t connect, run <code className="font-semibold bg-amber-100/60 dark:bg-zinc-800 px-1 py-0.5 rounded">npm run worker</code> in a terminal, or switch to GitHub Workflow above.
+              </p>
+            )}
+          </div>
         )}
       </div>
-
-      {/* Critical / Warning Storage Banner */}
-      {storageWarnings.length > 0 && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-amber-800">
-                Low Storage Warning Detected
-              </h3>
-              {storageWarnings.map((d) => (
-                <p key={d.nodeId} className="text-xs text-amber-700">
-                  <span className="font-medium">{d.label}</span> has only{" "}
-                  <span className="font-bold">{d.system.storage.freeGB} GB</span> free storage
-                  remaining (threshold: 20 GB). Consider freeing space or making another device primary.
-                </p>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Physical Hardware Laptops Section (Collapsible) */}
       <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl shadow-xl overflow-hidden">
@@ -1186,7 +1141,7 @@ export default function ZoomYouTubeDashboardPage() {
                       </div>
 
                       {isPrimary ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-indigo-600 text-white px-2.5 py-0.5 rounded-full shadow-xs">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-2.5 py-0.5 rounded-full shadow-xs">
                           <Star className="w-3 h-3 fill-current" /> Primary Node
                         </span>
                       ) : (
@@ -1260,7 +1215,7 @@ export default function ZoomYouTubeDashboardPage() {
                         <button
                           onClick={() => handleSetPrimary(device.nodeId)}
                           disabled={updatingNode === device.nodeId}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 px-3 py-1 rounded-lg transition disabled:opacity-50">
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 px-3 py-1 rounded-lg transition disabled:opacity-50">
                           <Star className="w-3 h-3" />
                           {updatingNode === device.nodeId ? "Switching..." : "Set as Primary"}
                         </button>
@@ -1390,7 +1345,7 @@ export default function ZoomYouTubeDashboardPage() {
           <Button
             onClick={() => setShowAddZoom(true)}
             size="sm"
-            className="bg-blue-600 hover:bg-blue-500 self-start sm:self-auto"
+            className="self-start sm:self-auto"
           >
             <Plus className="w-4 h-4" />
             <span>Add Zoom S2S Account</span>
@@ -1436,14 +1391,14 @@ export default function ZoomYouTubeDashboardPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleBrowseZoomAccount(acc)}
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-sm transition">
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 px-3 py-1.5 rounded-lg shadow-xs transition">
                       <Film className="w-3.5 h-3.5" /> Browse Cloud Recordings
                     </button>
 
                     <button
                       onClick={() => handleTestZoomAccount(acc.id)}
                       disabled={testingZoomId === acc.id}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 transition disabled:opacity-50 px-2 py-1.5">
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition disabled:opacity-50 px-2 py-1.5">
                       {testingZoomId === acc.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
@@ -1482,9 +1437,9 @@ export default function ZoomYouTubeDashboardPage() {
                 <button
                   type="button"
                   onClick={() => handleSetProcessingTarget("local")}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
                     processingTarget === "local"
-                      ? "bg-indigo-600 text-white shadow-xs"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
                   title="Run task immediately on local laptop">
@@ -1494,9 +1449,9 @@ export default function ZoomYouTubeDashboardPage() {
                 <button
                   type="button"
                   onClick={() => handleSetProcessingTarget("cloud")}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition ${
                     processingTarget === "cloud"
-                      ? "bg-indigo-600 text-white shadow-xs"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                   }`}
                   title="Automatically trigger GitHub Actions workflow in cloud">
@@ -1511,12 +1466,12 @@ export default function ZoomYouTubeDashboardPage() {
                     key={q}
                     type="button"
                     onClick={() => setQueueResolution(q)}
-                    className={`px-2 py-1 rounded text-[11px] font-bold transition ${
+                    className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
                       currentResolution === q
-                        ? "bg-indigo-600 text-white shadow-xs"
+                        ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                     }`}>
-                    {q === "720p" ? "⚡ 720p" : q}
+                    {q}
                   </button>
                 ))}
               </div>
@@ -1616,7 +1571,7 @@ export default function ZoomYouTubeDashboardPage() {
                         <span>{rec.durationMinutes} mins</span>
                         <span>•</span>
                         <span className="font-mono bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-zinc-800">
-                          📹 Video: {toMB(rec.fileSizeBytes)} MB
+                          Video: {toMB(rec.fileSizeBytes)} MB
                         </span>
                         {rec.recordingType && (
                           <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
@@ -1640,12 +1595,12 @@ export default function ZoomYouTubeDashboardPage() {
                       ) : rec.status === "downloading" || rec.status === "watermarking" || rec.status === "uploading" ? (
                         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-400 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
-                          <span className="capitalize">⚙️ Cloud: {rec.status}...</span>
+                          <span className="capitalize">Cloud: {rec.status}...</span>
                         </div>
                       ) : rec.status === "queued" ? (
                         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-xl">
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>⏳ Queued for {processingTarget === "local" ? "Local Worker" : "Cloud Runner"}</span>
+                          <span>Queued for {processingTarget === "local" ? "Local Worker" : "Cloud Runner"}</span>
                           <button
                             type="button"
                             onClick={() => handleCancelQueuedRecording(rec.fileId)}
@@ -1685,13 +1640,10 @@ export default function ZoomYouTubeDashboardPage() {
                                   {isRowWm ? (
                                     <>
                                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                      <span>✨ WM: ON</span>
+                                      <span>Auto WM: ON</span>
                                     </>
                                   ) : (
-                                    <>
-                                      <span className="text-slate-500 text-xs">🚫</span>
-                                      <span>Raw</span>
-                                    </>
+                                    <span>Raw (No WM)</span>
                                   )}
                                 </button>
 
@@ -1706,7 +1658,7 @@ export default function ZoomYouTubeDashboardPage() {
                                   }
                                   disabled={isEnqueuing}
                                   loading={isEnqueuing}
-                                  className="bg-indigo-600 hover:bg-indigo-500 text-xs"
+                                  className="text-xs"
                                 >
                                   {processingTarget === "local" ? (
                                     <Laptop className="w-3.5 h-3.5" />
@@ -1762,7 +1714,7 @@ export default function ZoomYouTubeDashboardPage() {
       <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl p-6 shadow-xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+            <div className="p-3 bg-zinc-100 dark:bg-zinc-900 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-zinc-800">
               <Film className="w-6 h-6" />
             </div>
             <div>
@@ -1778,7 +1730,7 @@ export default function ZoomYouTubeDashboardPage() {
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <Link
               href="/dashboard/discovered"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-sm transition">
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-xs transition">
               <Film className="w-3.5 h-3.5" />
               <span>Full Discovered Page &amp; Pagination &rarr;</span>
             </Link>
@@ -1786,7 +1738,7 @@ export default function ZoomYouTubeDashboardPage() {
             <button
               onClick={handleSyncRecordings}
               disabled={syncingRecordings}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50">
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg shadow-xs transition disabled:opacity-50">
               {syncingRecordings ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
@@ -1805,7 +1757,7 @@ export default function ZoomYouTubeDashboardPage() {
               ) : (
                 <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
               )}
-              <span>🚀 Run Cloud Runner Now</span>
+              <span>Run Cloud Runner Now</span>
             </button>
           </div>
         </div>
@@ -1825,9 +1777,9 @@ export default function ZoomYouTubeDashboardPage() {
                   setStatusFilter(f);
                   setRecordingsPage(1);
                 }}
-                className={`px-3 py-1 text-xs font-medium rounded-lg capitalize transition ${
+                className={`px-3 py-1 text-xs font-semibold rounded-lg capitalize transition ${
                   active
-                    ? "bg-slate-900 text-white dark:bg-indigo-600 dark:text-white"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
                 }`}>
                 {f} ({count})
@@ -1865,15 +1817,15 @@ export default function ZoomYouTubeDashboardPage() {
                       bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "-";
 
                     const badgeColors: Record<string, string> = {
-                      discovered: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60",
-                      queued: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60 font-bold",
-                      downloading: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60 animate-pulse",
-                      watermarking: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60",
-                      ready: "bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800/60",
-                      uploading: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60 animate-pulse",
-                      uploaded: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60",
+                      discovered: "bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800",
+                      queued: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/50 font-medium",
+                      downloading: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/50 animate-pulse",
+                      watermarking: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/50 animate-pulse",
+                      ready: "bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800",
+                      uploading: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/50 animate-pulse",
+                      uploaded: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50",
                       skipped: "bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-zinc-800",
-                      failed: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60",
+                      failed: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900/50",
                     };
 
                     return (
@@ -1922,8 +1874,8 @@ export default function ZoomYouTubeDashboardPage() {
                             </a>
                           ) : rec.status === "queued" ? (
                             <div className="inline-flex items-center gap-2">
-                              <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                                ⏳ Queued for {processingTarget === "local" ? "Local" : "Cloud"}
+                              <span className="text-xs font-medium text-slate-700 dark:text-zinc-300 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-2 py-0.5 rounded-md">
+                                Queued for {processingTarget === "local" ? "Local" : "Cloud"}
                               </span>
                               <button
                                 onClick={() => handleCancelQueuedRecording((rec as any).zoom_file_id || rec.id)}
@@ -1949,7 +1901,7 @@ export default function ZoomYouTubeDashboardPage() {
                                     },
                                   ])
                                 }
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1 rounded-md transition shadow-sm">
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 px-2.5 py-1 rounded-md transition shadow-xs">
                                 <Youtube className="w-3 h-3 text-red-300" />
                                 Queue for {targetShort}
                               </button>
@@ -2121,7 +2073,7 @@ export default function ZoomYouTubeDashboardPage() {
                     toast.action?.onClick();
                     removeToast(toast.id);
                   }}
-                  className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 rounded-lg transition shadow-xs">
+                  className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 px-2.5 py-1 rounded-lg transition shadow-xs">
                   <span>{toast.action.label}</span>
                 </button>
               )}

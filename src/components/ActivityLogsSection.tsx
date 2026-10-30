@@ -284,7 +284,7 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           onClick={() => changeStatusFilter("all")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "all"
-              ? "bg-slate-900 dark:bg-indigo-600 text-white border-slate-900 dark:border-indigo-600 shadow-sm"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
               : "bg-slate-50 dark:bg-zinc-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900"
           }`}>
           <div className="flex items-center justify-between">
@@ -326,8 +326,8 @@ export function ActivityLogsSection({ onRetryItem }: ActivityLogsSectionProps) {
           onClick={() => changeStatusFilter("processing")}
           className={`cursor-pointer p-3.5 rounded-xl border transition ${
             statusFilter === "processing"
-              ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-              : "bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 hover:bg-blue-100/60 dark:hover:bg-blue-900/40"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+              : "bg-slate-50 dark:bg-zinc-950 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900"
           }`}>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold">In Progress</span>

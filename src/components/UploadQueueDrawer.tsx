@@ -160,7 +160,7 @@ export function UploadQueueDrawer({
               type="button"
               onClick={() => onTriggerCloudRunner()}
               disabled={isTriggeringRunner}
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white px-2.5 py-1 rounded bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-sm transition disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 border border-zinc-700 dark:border-zinc-300 px-2.5 py-1 rounded shadow-xs transition disabled:opacity-50"
               title="Run batch GitHub Actions runner now for all queued videos">
               {isTriggeringRunner ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -173,7 +173,7 @@ export function UploadQueueDrawer({
             <button
               type="button"
               onClick={() => startDirectProcessing()}
-              className="inline-flex items-center gap-1 text-[11px] font-bold text-white px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 shadow-sm transition"
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 px-2 py-0.5 rounded shadow-xs transition"
               title="Start downloading, watermarking, and uploading all queued items in browser now">
               <Play className="w-2.5 h-2.5 fill-current" />
               <span>Start All</span>
@@ -237,11 +237,11 @@ export function UploadQueueDrawer({
       </div>
 
       {/* Presets Toolbar (Quality + Auto-Watermark Selector) */}
-      <div className="px-3.5 py-2 bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 space-y-1.5 text-xs">
+      <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 space-y-2 text-xs">
         {/* Quality preset */}
         {currentResolution && setQueueResolution && (
           <div className="flex items-center justify-between">
-            <span className="font-medium text-slate-600 dark:text-slate-400 text-[11px]">Quality Preset:</span>
+            <span className="font-medium text-slate-600 dark:text-zinc-400 text-[11px]">Quality Preset:</span>
             <div className="flex items-center gap-1">
               {(["720p", "1080p", "480p", "original"] as const).map((res) => (
                 <button
@@ -250,10 +250,10 @@ export function UploadQueueDrawer({
                   onClick={() => setQueueResolution(res)}
                   className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                     currentResolution === res
-                      ? "bg-indigo-600 text-white shadow-sm"
-                      : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                      ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                      : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
                   }`}>
-                  {res === "720p" ? "⚡ 720p" : res === "1080p" ? "1080p" : res === "480p" ? "480p" : "Original"}
+                  {res === "original" ? "Original" : res}
                 </button>
               ))}
             </div>
@@ -262,16 +262,16 @@ export function UploadQueueDrawer({
 
         {/* Auto-Watermark preset */}
         {setQueueWatermarkPreset && (
-          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-zinc-800">
-            <span className="font-medium text-slate-600 dark:text-slate-400 text-[11px] flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-500" /> Auto Watermark:
+          <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/70 dark:border-zinc-800">
+            <span className="font-medium text-slate-600 dark:text-zinc-400 text-[11px]">
+              Auto Watermark:
             </span>
             <div className="flex items-center gap-1">
               {([
-                { id: "both", label: "✨ Logo & Badge", title: "Embed Logo top-right + Union Education pill badge bottom-left" },
-                { id: "image", label: "🖼️ Logo", title: "Embed Logo top-right only" },
-                { id: "text", label: "🏷️ Badge", title: "Embed Union Education text badge only" },
-                { id: "none", label: "🚫 None", title: "Fast pass-through without watermark" },
+                { id: "both", label: "Logo & Badge", title: "Embed Logo top-right + Union Education pill badge bottom-left" },
+                { id: "image", label: "Logo", title: "Embed Logo top-right only" },
+                { id: "text", label: "Badge", title: "Embed Union Education text badge only" },
+                { id: "none", label: "None", title: "Fast pass-through without watermark" },
               ] as const).map((wm) => {
                 const active = ((currentWatermarkPreset === "logo" ? "image" : currentWatermarkPreset) || "both") === wm.id;
                 return (
@@ -282,8 +282,8 @@ export function UploadQueueDrawer({
                     onClick={() => setQueueWatermarkPreset?.(wm.id)}
                     className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                       active
-                        ? "bg-amber-600 text-white shadow-sm"
-                        : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                        ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                        : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
                     }`}>
                     {wm.label}
                   </button>
@@ -295,8 +295,8 @@ export function UploadQueueDrawer({
 
         {/* Processing Target preset */}
         {processingTarget && setProcessingTarget && (
-          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-zinc-800">
-            <span className="font-medium text-slate-600 dark:text-slate-400 text-[11px] flex items-center gap-1">
+          <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/70 dark:border-zinc-800">
+            <span className="font-medium text-slate-600 dark:text-zinc-400 text-[11px]">
               Target Runner:
             </span>
             <div className="flex items-center gap-1">
@@ -305,8 +305,8 @@ export function UploadQueueDrawer({
                 onClick={() => setProcessingTarget("local")}
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                   processingTarget === "local"
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                    ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
                 }`}>
                 <Laptop className="w-3.5 h-3.5" />
                 <span>Laptop</span>
@@ -316,8 +316,8 @@ export function UploadQueueDrawer({
                 onClick={() => setProcessingTarget("cloud")}
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                   processingTarget === "cloud"
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                    ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
                 }`}>
                 <Cloud className="w-3.5 h-3.5" />
                 <span>GitHub Workflow</span>
@@ -340,29 +340,29 @@ export function UploadQueueDrawer({
                     {item.topic}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400 flex-wrap">
                   <span className="bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded font-medium text-slate-700 dark:text-slate-300">
                     {item.accountName}
                   </span>
                   <span>•</span>
-                  <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                  <span className="bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 px-1.5 py-0.5 rounded font-medium text-[10px]">
                     {item.watermark?.type === "none" || (!item.watermark && currentWatermarkPreset === "none")
-                      ? "Original (Raw)"
+                      ? "Original"
                       : item.resolution || currentResolution || "720p"}
                   </span>
                   <span>•</span>
-                  <span className="bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                  <span className="bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 px-1.5 py-0.5 rounded font-medium text-[10px]">
                     {item.watermark?.type && item.watermark.type !== "none"
                       ? item.watermark.type === "both"
-                        ? "✨ WM: Logo+Badge"
+                        ? "Logo + Badge"
                         : item.watermark.type === "image" || item.watermark.type === "logo"
-                        ? "🖼️ WM: Logo"
+                        ? "Logo"
                         : item.watermark.type === "text"
-                        ? "🏷️ WM: Badge"
-                        : "🚫 No WM (Raw)"
+                        ? "Badge"
+                        : "Raw"
                       : (currentWatermarkPreset || "both") !== "none"
-                      ? "✨ Auto WM"
-                      : "🚫 No WM (Raw)"}
+                      ? "Logo + Badge"
+                      : "Raw"}
                   </span>
                   <span>•</span>
                   <span>{toMB(item.fileSizeBytes)} MB</span>
@@ -376,7 +376,7 @@ export function UploadQueueDrawer({
                       href={item.youtubeUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-lg hover:underline">
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-lg hover:underline">
                       <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                       <span>YouTube</span>
                       <ExternalLink className="w-2.5 h-2.5" />
@@ -391,14 +391,14 @@ export function UploadQueueDrawer({
                   </div>
                 ) : item.status === "uploading" ? (
                   <div className="flex items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-lg animate-pulse">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900/60 px-2 py-0.5 rounded-lg animate-pulse">
                       <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
                       <span>{item.progressPercent ? `${item.progressPercent}%` : (item.serverManaged ? (item.serverTarget === "local" ? "Laptop" : "Cloud") : "Streaming...")}</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => (cancelTask ? cancelTask(item.id) : removeFromQueue(item.id))}
-                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded-md transition hover:scale-105 active:scale-95 shadow-xs"
+                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/50 border border-rose-200 dark:border-rose-900/50 px-1.5 py-0.5 rounded-md transition"
                       title="Cancel this ongoing task">
                       <X className="w-3 h-3 text-rose-600" />
                       <span>Cancel</span>
@@ -406,11 +406,11 @@ export function UploadQueueDrawer({
                   </div>
                 ) : item.status === "failed" ? (
                   <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-red-600 dark:text-red-400 font-bold">Failed</span>
+                    <span className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">Failed</span>
                     <button
                       type="button"
                       onClick={() => retryQueueItem(item.id)}
-                      className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">
+                      className="text-[10px] font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/50 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-900/50">
                       Retry
                     </button>
                     <button
@@ -423,15 +423,15 @@ export function UploadQueueDrawer({
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-lg">
-                      <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 dark:text-zinc-300 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-2 py-0.5 rounded-lg">
+                      <Clock className="w-3 h-3 text-slate-400 dark:text-zinc-500" />
                       <span>{item.serverManaged ? `Queued · ${item.serverTarget === "local" ? "Laptop" : "Cloud"}` : "Queued"}</span>
                     </span>
                     {startDirectProcessing && (
                       <button
                         type="button"
                         onClick={() => startDirectProcessing(item.id)}
-                        className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-md transition shadow-xs"
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 px-2 py-0.5 rounded-md transition shadow-xs"
                         title="Start downloading & watermarking right now in browser">
                         <Play className="w-2.5 h-2.5 fill-current" />
                         <span>Start</span>

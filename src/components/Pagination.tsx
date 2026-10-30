@@ -135,7 +135,7 @@ export function Pagination({
                 disabled={disabled || isActive}
                 className={`min-w-[32px] h-8 px-2 rounded-lg font-semibold transition text-xs ${
                   isActive
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                     : "border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 text-slate-700 dark:text-slate-300"
                 }`}>
                 {pageNum}

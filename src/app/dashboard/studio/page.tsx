@@ -152,20 +152,20 @@ function StudioContent() {
                       key={q}
                       type="button"
                       onClick={() => setQueueResolution(q)}
-                      className={`px-2 py-1 rounded text-[11px] font-bold transition ${
+                      className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
                         currentResolution === q
-                          ? "bg-indigo-600 text-white shadow-sm"
+                          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
                           : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                       }`}>
-                      {q === "720p" ? "⚡ 720p" : q}
+                      {q}
                     </button>
                   ))}
                 </div>
                 <button
                   onClick={() => addAllToQueue(recordings, "Recorded Queue")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 rounded-lg shadow-sm transition">
-                  <Youtube className="w-3.5 h-3.5 text-red-600" />
-                  <span>⚡ Direct Upload All ({recordings.length}) to YT</span>
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 rounded-lg shadow-xs transition">
+                  <Youtube className="w-3.5 h-3.5 text-red-500" />
+                  <span>Direct Upload All ({recordings.length}) to YT</span>
                 </button>
               </div>
             )}
@@ -284,7 +284,7 @@ function StudioContent() {
                               "Recording Queue"
                             )
                           }
-                          className="w-full py-2 px-3 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition shadow-sm flex items-center justify-center gap-1.5">
+                          className="w-full py-2 px-3 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg transition shadow-xs flex items-center justify-center gap-1.5">
                           <Youtube className="w-3.5 h-3.5 text-red-300" />
                           <span>Direct Upload to YT</span>
                         </button>

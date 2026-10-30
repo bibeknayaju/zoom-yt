@@ -429,10 +429,10 @@ export function AutoWatermarkTemplateModal({
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: "both", label: "✨ Logo & Badge", desc: "Both Top-Right Logo + Bottom-Left Badge" },
-                  { id: "image", label: "🖼️ Logo Only", desc: "Top-Right Logo only" },
-                  { id: "text", label: "🏷️ Badge Only", desc: "Bottom-Left Text Badge only" },
-                  { id: "none", label: "🚫 None", desc: "Fast raw pass-through" },
+                  { id: "both", label: "Logo & Badge", desc: "Top-Right Logo + Bottom-Left Badge" },
+                  { id: "image", label: "Logo Only", desc: "Top-Right Logo only" },
+                  { id: "text", label: "Badge Only", desc: "Bottom-Left Text Badge only" },
+                  { id: "none", label: "None (Raw)", desc: "Fast raw pass-through" },
                 ].map((mode) => {
                   const active = template.watermarkType === mode.id;
                   return (
@@ -442,11 +442,11 @@ export function AutoWatermarkTemplateModal({
                       onClick={() => setTemplate((prev) => ({ ...prev, watermarkType: mode.id as any }))}
                       className={`p-2.5 rounded-xl border text-left transition ${
                         active
-                          ? "bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-500/20"
+                          ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
                           : "bg-white dark:bg-zinc-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800"
                       }`}>
                       <div className="text-xs font-bold">{mode.label}</div>
-                      <div className={`text-[10px] ${active ? "text-indigo-100" : "text-slate-400"}`}>
+                      <div className={`text-[10px] ${active ? "text-slate-300 dark:text-zinc-600" : "text-slate-400"}`}>
                         {mode.desc}
                       </div>
                     </button>
@@ -466,12 +466,12 @@ export function AutoWatermarkTemplateModal({
                     key={res}
                     type="button"
                     onClick={() => setTemplate((prev) => ({ ...prev, selectedResolution: res }))}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition text-center ${
+                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition text-center ${
                       template.selectedResolution === res
-                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                        : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                        ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                        : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800"
                     }`}>
-                    {res === "720p" ? "⚡ 720p" : res === "original" ? "Original" : res}
+                    {res === "original" ? "Original" : res}
                   </button>
                 ))}
               </div>

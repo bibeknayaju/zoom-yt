@@ -4,8 +4,8 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Zoom & YouTube Studio | Union Education",
-  description: "Automated Zoom cloud recording watermarking and YouTube direct upload pipeline",
+  title: "Vidia | Video Automation Studio",
+  description: "Automated Zoom cloud recording discovery, watermarking, and YouTube distribution pipeline.",
 };
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning className="h-full antialiased">
-        <body className="min-h-full bg-slate-50 dark:bg-[#000000] text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-indigo-600 selection:text-white font-sans transition-colors duration-200">
+        <body className="min-h-full bg-slate-50 dark:bg-[#000000] text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-zinc-900 selection:text-white dark:selection:bg-white dark:selection:text-zinc-900 font-sans transition-colors duration-200">
           <ThemeProvider
             attribute="class"
             defaultTheme="system"

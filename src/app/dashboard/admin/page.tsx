@@ -383,7 +383,7 @@ export default function AdminSettingsPage() {
               </div>
               <button
                 onClick={() => setShowAddZoom(!showAddZoom)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow">
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl text-xs font-semibold transition shadow-xs">
                 <Plus className="w-3.5 h-3.5" />
                 <span>{showAddZoom ? "Cancel" : "Add Zoom Account"}</span>
               </button>
@@ -460,7 +460,7 @@ export default function AdminSettingsPage() {
                   <button
                     type="submit"
                     disabled={savingZoom}
-                    className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-900 rounded-xl text-xs font-semibold disabled:opacity-50 shadow-xs">
                     {savingZoom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
                     <span>Encrypt & Save Account</span>
                   </button>

@@ -32,19 +32,14 @@ export function Navbar({ userRole = "user", userEmail, onOpenQueue }: NavbarProp
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         {/* Brand */}
         <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-red-600 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-              <UploadCloud className="w-5 h-5 text-white" />
+          <Link href="/dashboard" className="group">
+            <div className="text-xl font-black text-white tracking-tight flex items-center gap-2 font-sans">
+              <span>Vidia</span>
+              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                v2.0
+              </span>
             </div>
-            <div>
-              <div className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
-                <span>Zoom & YouTube Studio</span>
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                  v2.0
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">Union Education Media Pipeline</p>
-            </div>
+            <p className="text-[11px] text-slate-400 hidden sm:block">Video Automation</p>
           </Link>
         </div>
 
@@ -77,13 +72,13 @@ export function Navbar({ userRole = "user", userEmail, onOpenQueue }: NavbarProp
               onClick={onOpenQueue}
               className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
                 activeCount > 0
-                  ? "bg-blue-600/15 border-blue-500 text-blue-300 hover:bg-blue-600/25 animate-pulse"
-                  : "bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 border-zinc-900 dark:border-white shadow-xs"
+                  : "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
               }`}>
-              <Layers className="w-4 h-4 text-blue-400" />
+              <Layers className="w-4 h-4 text-slate-500 dark:text-zinc-400" />
               <span className="hidden sm:inline">Upload Queue</span>
               {activeCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-blue-600 text-white">
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-900">
                   {activeCount}
                 </span>
               )}

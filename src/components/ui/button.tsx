@@ -5,14 +5,14 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-xs font-semibold ring-offset-slate-950 transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-xs font-semibold ring-offset-slate-950 transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-zinc-400 dark:focus-visible:ring-zinc-200 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
   {
     variants: {
       variant: {
         default:
-          "bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 hover:shadow-indigo-500/20",
+          "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100 shadow-xs border border-zinc-900 dark:border-white",
         destructive:
-          "bg-rose-600 text-white shadow-sm hover:bg-rose-500 hover:shadow-rose-500/20",
+          "bg-rose-600 text-white shadow-xs hover:bg-rose-500",
         outline:
           "border border-slate-300 dark:border-zinc-800 bg-white dark:bg-black text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-zinc-900 hover:text-slate-900 dark:hover:text-white hover:border-slate-400 dark:hover:border-zinc-700",
         secondary:
@@ -20,13 +20,13 @@ const buttonVariants = cva(
         ghost:
           "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-900",
         link:
-          "text-indigo-400 underline-offset-4 hover:underline hover:text-indigo-300",
+          "text-slate-900 dark:text-white underline-offset-4 hover:underline",
         premium:
-          "bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 bg-size-200 text-white shadow-md hover:from-indigo-500 hover:to-purple-500 hover:shadow-purple-500/25 ring-1 ring-white/10",
+          "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100 shadow-xs border border-zinc-900 dark:border-white",
         amber:
-          "bg-amber-600 text-white shadow-sm hover:bg-amber-500 hover:shadow-amber-500/20",
+          "bg-amber-600 text-white shadow-xs hover:bg-amber-500",
         emerald:
-          "bg-emerald-600 text-white shadow-sm hover:bg-emerald-500 hover:shadow-emerald-500/20",
+          "bg-emerald-600 text-white shadow-xs hover:bg-emerald-500",
       },
       size: {
         default: "h-9 px-4 py-2",

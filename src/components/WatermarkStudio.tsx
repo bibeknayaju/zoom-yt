@@ -255,7 +255,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
         throw new Error(data.error || "Failed to enqueue video");
       }
 
-      alert("⚡ Video successfully queued for Cloud Processing!\n\nThe GitHub Actions cloud runner will download, watermark, and upload it to YouTube.");
+      alert("Video successfully queued for Cloud Processing!\n\nThe GitHub Actions cloud runner will download, watermark, and upload it to YouTube.");
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to queue video";
@@ -798,14 +798,14 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-slate-300">Video Quality & Speed</label>
                       <span className="text-[11px] text-indigo-400 font-medium">
-                        {selectedResolution === "720p" ? "⚡ 50% Faster + Half Upload Size" : selectedResolution === "1080p" ? "Full HD (Original)" : "🚀 Ultra Fast (Small File)"}
+                        {selectedResolution === "720p" ? "50% Faster + Half Upload Size" : selectedResolution === "1080p" ? "Full HD (Original)" : "Ultra Fast (Small File)"}
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                       {[
-                        { id: "720p", label: "720p HD", desc: "⚡ Fast (Recommended)" },
+                        { id: "720p", label: "720p HD", desc: "Fast (Recommended)" },
                         { id: "1080p", label: "1080p", desc: "Original Native" },
-                        { id: "480p", label: "480p SD", desc: "🚀 Ultra Fast" },
+                        { id: "480p", label: "480p SD", desc: "Ultra Fast" },
                       ].map((item) => {
                         const active = selectedResolution === item.id;
                         return (
@@ -815,10 +815,10 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                             disabled={watermarkStatus === "done"}
                             onClick={() => setSelectedResolution(item.id as any)}
                             className={`py-2 px-1.5 rounded-lg text-xs font-semibold transition flex flex-col items-center gap-0.5 ${
-                              active ? "bg-indigo-600 text-white shadow" : "text-slate-400 hover:text-slate-200"
+                              active ? "bg-zinc-800 text-white shadow-xs border border-zinc-700" : "text-slate-400 hover:text-slate-200"
                             } disabled:opacity-50`}>
                             <span>{item.label}</span>
-                            <span className={`text-[10px] font-normal ${active ? "text-indigo-200" : "text-slate-500"}`}>{item.desc}</span>
+                            <span className={`text-[10px] font-normal ${active ? "text-slate-300" : "text-slate-500"}`}>{item.desc}</span>
                           </button>
                         );
                       })}
@@ -1140,21 +1140,21 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
                       type="button"
                       onClick={handleAddToQueue}
                       disabled={enqueuingCloud || watermarkStatus === "rendering"}
-                      className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-md"
+                      className="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-xs"
                       title="Queue this video with custom watermark settings for GitHub Actions cloud runner">
                       {enqueuingCloud ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <Clock className="w-3.5 h-3.5 text-indigo-200" />
+                        <Clock className="w-3.5 h-3.5 text-zinc-400" />
                       )}
-                      <span className="hidden sm:inline">⚡ Queue for Cloud Upload</span>
+                      <span className="hidden sm:inline">Queue for Cloud Upload</span>
                       <span className="sm:hidden">Queue Cloud</span>
                     </button>
                     <button
                       type="button"
                       onClick={handleRenderWatermark}
                       disabled={watermarkStatus === "rendering"}
-                      className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50">
+                      className="flex-1 py-2.5 px-4 bg-white hover:bg-zinc-100 text-zinc-900 rounded-xl text-xs font-semibold shadow-xs transition flex items-center justify-center gap-2 disabled:opacity-50">
                       {watermarkStatus === "rendering" ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
