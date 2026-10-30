@@ -100,6 +100,97 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, accountName, accountId, clientId, clientSecret, isActive } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Account id is required" }, { status: 400 });
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 500 });
+    }
+
+    const { data: existing, error: fetchErr } = await supabase
+      .from("zy_zoom_accounts")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ success: false, error: "Account not found" }, { status: 404 });
+    }
+
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (accountName !== undefined && accountName.trim()) {
+      updatePayload.account_name = accountName.trim();
+    }
+
+    if (isActive !== undefined) {
+      updatePayload.is_active = Boolean(isActive);
+    }
+
+    // Determine final credentials to verify
+    const finalAccountId = (accountId && accountId.trim()) ? accountId.trim() : existing.account_id;
+    const finalClientId = (clientId && clientId.trim()) ? clientId.trim() : decryptToken(existing.client_id_enc);
+    const finalClientSecret = (clientSecret && clientSecret.trim()) ? clientSecret.trim() : decryptToken(existing.client_secret_enc);
+
+    // If credentials or accountId are changed, verify with Zoom live
+    const isCredentialsChanged = Boolean(
+      (accountId && accountId.trim() !== existing.account_id) ||
+      (clientId && clientId.trim()) ||
+      (clientSecret && clientSecret.trim())
+    );
+
+    if (isCredentialsChanged) {
+      const testResult = await verifyZoomS2SConnection(finalAccountId, finalClientId, finalClientSecret);
+      if (!testResult.success) {
+        return NextResponse.json(
+          { success: false, error: `Zoom authentication failed: ${testResult.error}` },
+          { status: 400 }
+        );
+      }
+
+      updatePayload.account_id = finalAccountId;
+      updatePayload.client_id_enc = encryptToken(finalClientId);
+      updatePayload.client_secret_enc = encryptToken(finalClientSecret);
+    }
+
+    const { data: updated, error: updErr } = await supabase
+      .from("zy_zoom_accounts")
+      .update(updatePayload)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (updErr) {
+      throw new Error(updErr.message);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Zoom account "${updated.account_name}" updated successfully!`,
+      account: {
+        id: updated.id,
+        accountName: updated.account_name,
+        accountId: updated.account_id,
+        isActive: updated.is_active,
+        createdAt: updated.created_at,
+        updatedAt: updated.updated_at,
+      },
+    });
+  } catch (error: any) {
+    console.error("PUT /api/zoom-youtube/zoom/accounts error:", error);
+    return NextResponse.json({ success: false, error: error?.message || "Failed to update Zoom account" }, { status: 500 });
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

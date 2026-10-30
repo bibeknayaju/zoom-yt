@@ -1,23 +1,24 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, useUser } from "@clerk/nextjs";
 import {
   Film,
   ListVideo,
+  Video,
   History,
   Sliders,
   Shield,
   UploadCloud,
   CheckCircle2,
-  Menu,
   X,
   Loader2,
 } from "lucide-react";
 import { useUploadQueue } from "@/lib/upload-queue-store";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useSidebar } from "@/components/SidebarContext";
 
 interface SidebarProps {
   onOpenQueue?: () => void;
@@ -26,7 +27,7 @@ interface SidebarProps {
 export function Sidebar({ onOpenQueue }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useUser();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { mobileOpen, setMobileOpen } = useSidebar();
 
   const { queue, setDrawerOpen } = useUploadQueue();
   const activeCount = queue.filter(
@@ -38,6 +39,7 @@ export function Sidebar({ onOpenQueue }: SidebarProps) {
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: Film },
     { href: "/dashboard/discovered", label: "Discovered Videos", icon: ListVideo },
+    { href: "/dashboard/zoom-accounts", label: "Zoom Accounts", icon: Video },
     { href: "/dashboard/activity", label: "Activity Logs", icon: History },
     { href: "/dashboard/studio", label: "Watermark Studio", icon: Sliders },
     ...(userRole === "admin"
@@ -139,26 +141,6 @@ export function Sidebar({ onOpenQueue }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile Top Navbar Bar with Hamburger */}
-      <div className="lg:hidden sticky top-0 z-40 bg-white dark:bg-black border-b border-slate-200 dark:border-zinc-800 px-4 py-3 flex items-center justify-between shadow-xs">
-        <Link href="/dashboard">
-          <span className="text-lg font-black tracking-tight text-slate-900 dark:text-white font-sans">
-            Vidia
-          </span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-1.5 rounded-lg border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800"
-            aria-label="Toggle Navigation Menu"
-          >
-            {mobileOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-          </button>
-        </div>
-      </div>
-
       {/* Desktop Fixed Left Sidebar (240px) */}
       <aside className="hidden lg:block fixed inset-y-0 left-0 w-60 z-30 shadow-xs">
         {sidebarContent}
