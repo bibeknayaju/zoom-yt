@@ -1050,12 +1050,18 @@ export async function processRecordingEndToEnd(
 
     if (supabase) {
       try {
-        await supabase.from("zy_recordings").upsert({
-          zoom_file_id: options.fileId,
-          topic: options.meetingTopic,
-          status: "downloading",
-        }, { onConflict: "zoom_file_id" });
-      } catch {}
+        const { error: updErr } = await supabase
+          .from("zy_recordings")
+          .update({
+            topic: options.meetingTopic,
+            status: "downloading",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("zoom_file_id", options.fileId);
+        if (updErr) console.warn("[Pipeline] Failed to set status=downloading:", updErr.message);
+      } catch (err) {
+        console.warn("[Pipeline] Error updating status=downloading:", err);
+      }
     }
 
     const watermarkOpts: WatermarkOptions = {
@@ -1228,14 +1234,23 @@ export async function processRecordingEndToEnd(
 
     if (supabase) {
       try {
-        await supabase.from("zy_recordings").upsert({
-          zoom_file_id: options.fileId,
-          topic: options.meetingTopic,
-          status: "uploaded",
-          youtube_video_id: uploadRes.videoId,
-          youtube_url: uploadRes.url,
-          uploaded_at: new Date().toISOString(),
-        }, { onConflict: "zoom_file_id" });
+        const { error: updErr } = await supabase
+          .from("zy_recordings")
+          .update({
+            status: "uploaded",
+            youtube_video_id: uploadRes.videoId,
+            youtube_url: uploadRes.url,
+            uploaded_at: new Date().toISOString(),
+            error_message: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("zoom_file_id", options.fileId);
+
+        if (updErr) {
+          console.error("[Pipeline] CRITICAL: Failed to update recording to uploaded:", updErr.message);
+        } else {
+          console.log(`💾 Successfully updated database status to uploaded for file ${options.fileId} (${uploadRes.url})`);
+        }
 
         const nowPacific = new Intl.DateTimeFormat("en-US", {
           timeZone: "America/Los_Angeles",
@@ -1251,7 +1266,9 @@ export async function processRecordingEndToEnd(
           quota_used_today: currentQuota + 1600,
           last_quota_reset_date: nowPacific,
         }).neq("id", "00000000-0000-0000-0000-000000000000");
-      } catch {}
+      } catch (dbErr) {
+        console.error("[Pipeline] Error saving uploaded state in database:", dbErr);
+      }
     }
 
     await recordActivitySuccess(activityId, {
@@ -1312,11 +1329,15 @@ export async function renderWatermarkOnly(
     if (!fs.existsSync(rawPath) || (await fsp.stat(rawPath)).size === 0) {
       if (supabase) {
         try {
-          await supabase.from("zy_recordings").upsert({
-            zoom_file_id: options.fileId,
-            topic: options.meetingTopic,
-            status: "downloading",
-          }, { onConflict: "zoom_file_id" });
+          const { error: updErr } = await supabase
+            .from("zy_recordings")
+            .update({
+              topic: options.meetingTopic,
+              status: "downloading",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("zoom_file_id", options.fileId);
+          if (updErr) console.warn("[Pipeline] Failed to set status=downloading:", updErr.message);
         } catch {}
       }
 
@@ -1486,14 +1507,23 @@ export async function uploadWatermarkedToYouTube(
 
     if (supabase) {
       try {
-        await supabase.from("zy_recordings").upsert({
-          zoom_file_id: options.fileId,
-          topic: options.meetingTopic,
-          status: "uploaded",
-          youtube_video_id: uploadRes.videoId,
-          youtube_url: uploadRes.url,
-          uploaded_at: new Date().toISOString(),
-        }, { onConflict: "zoom_file_id" });
+        const { error: updErr } = await supabase
+          .from("zy_recordings")
+          .update({
+            status: "uploaded",
+            youtube_video_id: uploadRes.videoId,
+            youtube_url: uploadRes.url,
+            uploaded_at: new Date().toISOString(),
+            error_message: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("zoom_file_id", options.fileId);
+
+        if (updErr) {
+          console.error("[Pipeline] CRITICAL: Failed to update recording to uploaded:", updErr.message);
+        } else {
+          console.log(`💾 Successfully updated database status to uploaded for file ${options.fileId} (${uploadRes.url})`);
+        }
 
         const nowPacific = new Intl.DateTimeFormat("en-US", {
           timeZone: "America/Los_Angeles",

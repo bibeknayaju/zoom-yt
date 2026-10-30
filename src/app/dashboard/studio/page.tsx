@@ -308,19 +308,31 @@ function StudioContent() {
           </div>
 
           {processingTarget === "cloud" && (
-            <button
-              type="button"
-              onClick={handleTriggerCloudRunner}
-              disabled={triggeringRunner}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50"
-              title="Dispatch GitHub Actions cloud runner">
-              {triggeringRunner ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Cloud className="w-3.5 h-3.5" />
-              )}
-              <span>{triggeringRunner ? "Dispatching..." : "Run Cloud Runner"}</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleTriggerCloudRunner}
+                disabled={triggeringRunner}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50"
+                title="Dispatch GitHub Actions cloud runner">
+                {triggeringRunner ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Cloud className="w-3.5 h-3.5" />
+                )}
+                <span>{triggeringRunner ? "Dispatching..." : "Run Cloud Runner"}</span>
+              </button>
+
+              <a
+                href="https://github.com/bibeknayaju/zoom-yt/actions"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs"
+                title="Open GitHub Actions workflows tab in a new window">
+                <span>View Live Runs</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              </a>
+            </>
           )}
         </div>
       </div>

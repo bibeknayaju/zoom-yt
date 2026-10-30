@@ -227,9 +227,19 @@ async function runBatch() {
         let lastReportedTime = 0;
         let lastReportedPct = -1;
 
+        const isCI = Boolean(process.env.GITHUB_ACTIONS || !process.stdout.isTTY);
         const handleProgress = (prog: { percent: number; stage: string; message: string }) => {
           const bar = `[${"█".repeat(Math.floor(prog.percent / 5))}${"-".repeat(20 - Math.floor(prog.percent / 5))}]`;
-          process.stdout.write(`\r⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}    `);
+          if (isCI) {
+            const now = Date.now();
+            if (now - lastReportedTime >= 8000 || Math.abs(prog.percent - lastReportedPct) >= 10 || prog.percent === 100) {
+              console.log(`⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}`);
+              lastReportedTime = now;
+              lastReportedPct = prog.percent;
+            }
+          } else {
+            process.stdout.write(`\r⚙️  [${prog.stage.toUpperCase()}] ${bar} ${prog.percent}%: ${prog.message}    `);
+          }
 
           const now = Date.now();
           if (now - lastReportedTime < 1500 && Math.abs(prog.percent - lastReportedPct) < 2 && prog.percent !== 100) {
@@ -239,9 +249,8 @@ async function runBatch() {
           lastReportedPct = prog.percent;
 
           // Write live progress to Supabase in background so the UI drawer reflects exact % in real-time
-          void supabase
-            .from("zy_recordings")
-            .update({
+          void (async () => {
+            const payload: Record<string, any> = {
               status: prog.stage === "uploading" ? "uploading" : "watermarking",
               options: {
                 ...jobOptions,
@@ -251,8 +260,18 @@ async function runBatch() {
                 progressUpdatedAt: new Date().toISOString(),
               },
               updated_at: new Date().toISOString(),
-            })
-            .eq("id", job.id);
+            };
+            const { error: updErr } = await supabase
+              .from("zy_recordings")
+              .update(payload)
+              .eq("id", job.id);
+
+            // If options column has not been migrated yet, gracefully update without options
+            if (updErr && /options/i.test(updErr.message)) {
+              delete payload.options;
+              await supabase.from("zy_recordings").update(payload).eq("id", job.id);
+            }
+          })();
         };
 
         const result = await processRecordingEndToEnd(
@@ -280,6 +299,18 @@ async function runBatch() {
         if (result.success) {
           console.log(`✅ [Task ${processedCount}] SUCCESS! Uploaded to YouTube: ${result.youtubeUrl}`);
           successCount++;
+
+          await supabase
+            .from("zy_recordings")
+            .update({
+              status: "uploaded",
+              youtube_video_id: result.youtubeVideoId,
+              youtube_url: result.youtubeUrl,
+              uploaded_at: new Date().toISOString(),
+              error_message: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", job.id);
         } else {
           console.error(`❌ [Task ${processedCount}] FAILED: ${result.error}`);
           failCount++;

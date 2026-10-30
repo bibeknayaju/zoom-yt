@@ -519,19 +519,31 @@ export default function DiscoveredVideosPage() {
 
             {/* Run Cloud Runner Button (when cloud target is selected) */}
             {processingTarget === "cloud" && (
-              <button
-                type="button"
-                onClick={handleTriggerCloudRunner}
-                disabled={triggeringRunner}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50"
-                title="Dispatch GitHub Actions cloud runner to process all queued videos">
-                {triggeringRunner ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Cloud className="w-3.5 h-3.5" />
-                )}
-                <span>{triggeringRunner ? "Dispatching..." : "Run Cloud Runner"}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleTriggerCloudRunner}
+                  disabled={triggeringRunner}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50"
+                  title="Dispatch GitHub Actions cloud runner to process all queued videos">
+                  {triggeringRunner ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Cloud className="w-3.5 h-3.5" />
+                  )}
+                  <span>{triggeringRunner ? "Dispatching..." : "Run Cloud Runner"}</span>
+                </button>
+
+                <a
+                  href="https://github.com/bibeknayaju/zoom-yt/actions"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs"
+                  title="Open GitHub Actions workflows tab in a new window">
+                  <span>View Live Runs</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                </a>
+              </>
             )}
 
             <button
@@ -565,13 +577,23 @@ export default function DiscoveredVideosPage() {
                 ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300"
                 : "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-300"
             }`}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {runnerMsg.type === "success" ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : (
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
               )}
               <span>{runnerMsg.text}</span>
+              {runnerMsg.type === "success" && (
+                <a
+                  href="https://github.com/bibeknayaju/zoom-yt/actions"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold underline ml-1 hover:text-emerald-700 dark:hover:text-white inline-flex items-center gap-1">
+                  <span>View Live Runs</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
             </div>
             <button
               onClick={() => setRunnerMsg(null)}

@@ -259,9 +259,8 @@ async function pollAndExecute() {
         lastReportedTime = now;
         lastReportedPct = prog.percent;
 
-        void supabase
-          .from("zy_recordings")
-          .update({
+        void (async () => {
+          const payload: Record<string, any> = {
             status: prog.stage === "uploading" ? "uploading" : "watermarking",
             options: {
               ...jobOptions,
@@ -271,8 +270,17 @@ async function pollAndExecute() {
               progressUpdatedAt: new Date().toISOString(),
             },
             updated_at: new Date().toISOString(),
-          })
-          .eq("id", job.id);
+          };
+          const { error: updErr } = await supabase
+            .from("zy_recordings")
+            .update(payload)
+            .eq("id", job.id);
+
+          if (updErr && /options/i.test(updErr.message)) {
+            delete payload.options;
+            await supabase.from("zy_recordings").update(payload).eq("id", job.id);
+          }
+        })();
       };
 
       const result = await processRecordingEndToEnd(
@@ -299,6 +307,17 @@ async function pollAndExecute() {
 
       if (result.success) {
         console.log(`✅ [Worker] SUCCESS! Video Uploaded: ${result.youtubeUrl}`);
+        await supabase
+          .from("zy_recordings")
+          .update({
+            status: "uploaded",
+            youtube_video_id: result.youtubeVideoId,
+            youtube_url: result.youtubeUrl,
+            uploaded_at: new Date().toISOString(),
+            error_message: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
       } else {
         console.error(`❌ [Worker] FAILED: ${result.error}`);
       }
