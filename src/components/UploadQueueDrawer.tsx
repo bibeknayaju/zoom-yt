@@ -102,7 +102,7 @@ export function UploadQueueDrawer({
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="group flex items-center gap-2.5 px-4 py-2.5 bg-slate-900/95 hover:bg-slate-900 text-white rounded-full shadow-2xl border border-slate-700 hover:border-indigo-500 backdrop-blur-md transition-all duration-200 hover:scale-105 active:scale-95"
+          className="group flex items-center gap-2.5 px-4 py-2.5 bg-black/95 hover:bg-black text-white rounded-full shadow-2xl border border-zinc-700 hover:border-indigo-500 backdrop-blur-md transition-all duration-200 hover:scale-105 active:scale-95"
           title="Open Direct YouTube Upload Queue Popup">
           <div className="relative">
             <Youtube className="w-4 h-4 text-red-500" />
@@ -132,9 +132,9 @@ export function UploadQueueDrawer({
   /* 2. Expanded State: Full Popup card with close (✕) and clear actions */
   /* ------------------------------------------------------------------ */
   return (
-    <div className="fixed bottom-5 right-5 z-50 w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-200">
+    <div className="fixed bottom-5 right-5 z-50 w-full max-w-md bg-white dark:bg-black rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-200">
       {/* Drawer Header */}
-      <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between select-none">
+      <div className="p-3.5 bg-black text-white border-b border-zinc-800 flex items-center justify-between select-none">
         <div className="flex items-center gap-2.5">
           <div className="relative">
             <Youtube className="w-5 h-5 text-red-500" />
@@ -192,7 +192,7 @@ export function UploadQueueDrawer({
             <button
               type="button"
               onClick={clearCompleted}
-              className="text-[11px] font-semibold text-slate-300 hover:text-white px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition"
+              className="text-[11px] font-semibold text-zinc-300 hover:text-white px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition"
               title="Clear finished items">
               Clear Done
             </button>
@@ -200,7 +200,7 @@ export function UploadQueueDrawer({
           <button
             type="button"
             onClick={() => setDrawerOpen(false)}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-zinc-900 transition"
             title="Minimize / Close popup">
             <X className="w-4 h-4" />
           </button>
@@ -221,14 +221,14 @@ export function UploadQueueDrawer({
       )}
 
       {/* Overall Queue Progress Bar */}
-      <div className="px-3.5 py-2 bg-slate-800 border-t border-slate-700">
+      <div className="px-3.5 py-2 bg-zinc-950 border-t border-zinc-800">
         <div className="flex items-center justify-between text-[11px] text-slate-300 mb-1.5 font-medium">
           <span>Overall Progress</span>
           <span className="font-semibold text-white">
             {overallPercent}% ({completedCount}/{queue.length} done)
           </span>
         </div>
-        <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
+        <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
           <div
             className="bg-emerald-400 h-1.5 rounded-full transition-all duration-500 ease-out"
             style={{ width: `${overallPercent}%` }}
@@ -237,11 +237,11 @@ export function UploadQueueDrawer({
       </div>
 
       {/* Presets Toolbar (Quality + Auto-Watermark Selector) */}
-      <div className="px-3.5 py-2 bg-slate-50 border-b border-slate-200 space-y-1.5 text-xs">
+      <div className="px-3.5 py-2 bg-slate-50 dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 space-y-1.5 text-xs">
         {/* Quality preset */}
         {currentResolution && setQueueResolution && (
           <div className="flex items-center justify-between">
-            <span className="font-medium text-slate-600 text-[11px]">Quality Preset:</span>
+            <span className="font-medium text-slate-600 dark:text-slate-400 text-[11px]">Quality Preset:</span>
             <div className="flex items-center gap-1">
               {(["720p", "1080p", "480p", "original"] as const).map((res) => (
                 <button
@@ -251,7 +251,7 @@ export function UploadQueueDrawer({
                   className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                     currentResolution === res
                       ? "bg-indigo-600 text-white shadow-sm"
-                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                      : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                   }`}>
                   {res === "720p" ? "⚡ 720p" : res === "1080p" ? "1080p" : res === "480p" ? "480p" : "Original"}
                 </button>
@@ -262,8 +262,8 @@ export function UploadQueueDrawer({
 
         {/* Auto-Watermark preset */}
         {setQueueWatermarkPreset && (
-          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-            <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-zinc-800">
+            <span className="font-medium text-slate-600 dark:text-slate-400 text-[11px] flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-amber-500" /> Auto Watermark:
             </span>
             <div className="flex items-center gap-1">
@@ -283,7 +283,7 @@ export function UploadQueueDrawer({
                     className={`px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                       active
                         ? "bg-amber-600 text-white shadow-sm"
-                        : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                        : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                     }`}>
                     {wm.label}
                   </button>
@@ -295,8 +295,8 @@ export function UploadQueueDrawer({
 
         {/* Processing Target preset */}
         {processingTarget && setProcessingTarget && (
-          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-            <span className="font-medium text-slate-600 text-[11px] flex items-center gap-1">
+          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-zinc-800">
+            <span className="font-medium text-slate-600 dark:text-slate-400 text-[11px] flex items-center gap-1">
               Target Runner:
             </span>
             <div className="flex items-center gap-1">
@@ -306,9 +306,9 @@ export function UploadQueueDrawer({
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                   processingTarget === "local"
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                 }`}>
-                <Laptop className="w-3 h-3" />
+                <Laptop className="w-3.5 h-3.5" />
                 <span>Laptop</span>
               </button>
               <button
@@ -317,9 +317,9 @@ export function UploadQueueDrawer({
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
                   processingTarget === "cloud"
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
                 }`}>
-                <Cloud className="w-3 h-3" />
+                <Cloud className="w-3.5 h-3.5" />
                 <span>GitHub Workflow</span>
               </button>
             </div>
@@ -328,30 +328,30 @@ export function UploadQueueDrawer({
       </div>
 
       {/* Drawer Items List */}
-      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 p-2 space-y-1.5 bg-slate-50/50">
+      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-zinc-800 p-2 space-y-1.5 bg-slate-50/50 dark:bg-black">
         {queue.map((item) => (
           <div
             key={item.id}
-            className="p-2.5 rounded-xl bg-white border border-slate-100 text-xs space-y-1 shadow-sm">
+            className="p-2.5 rounded-xl bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-xs space-y-1 shadow-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="space-y-0.5 min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-slate-900 truncate block">
+                  <span className="font-semibold text-slate-900 dark:text-white truncate block">
                     {item.topic}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                  <span className="bg-slate-100 px-1.5 py-0.5 rounded font-medium text-slate-700">
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded font-medium text-slate-700 dark:text-slate-300">
                     {item.accountName}
                   </span>
                   <span>•</span>
-                  <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                  <span className="bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 rounded font-semibold text-[10px]">
                     {item.watermark?.type === "none" || (!item.watermark && currentWatermarkPreset === "none")
                       ? "Original (Raw)"
                       : item.resolution || currentResolution || "720p"}
                   </span>
                   <span>•</span>
-                  <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-semibold text-[10px]">
+                  <span className="bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded font-semibold text-[10px]">
                     {item.watermark?.type && item.watermark.type !== "none"
                       ? item.watermark.type === "both"
                         ? "✨ WM: Logo+Badge"
@@ -376,29 +376,29 @@ export function UploadQueueDrawer({
                       href={item.youtubeUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg hover:underline">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-lg hover:underline">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                       <span>YouTube</span>
                       <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                     <button
                       type="button"
                       onClick={() => removeFromQueue(item.id)}
-                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition"
+                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-900 transition"
                       title="Dismiss from list">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ) : item.status === "uploading" ? (
                   <div className="flex items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-lg animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-600 dark:text-blue-400" />
                       <span>{item.progressPercent ? `${item.progressPercent}%` : (item.serverManaged ? (item.serverTarget === "local" ? "Laptop" : "Cloud") : "Streaming...")}</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => (cancelTask ? cancelTask(item.id) : removeFromQueue(item.id))}
-                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded-md transition hover:scale-105 active:scale-95 shadow-xs"
+                      className="inline-flex items-center gap-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded-md transition hover:scale-105 active:scale-95 shadow-xs"
                       title="Cancel this ongoing task">
                       <X className="w-3 h-3 text-rose-600" />
                       <span>Cancel</span>
@@ -406,32 +406,32 @@ export function UploadQueueDrawer({
                   </div>
                 ) : item.status === "failed" ? (
                   <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-red-600 font-bold">Failed</span>
+                    <span className="text-[11px] text-red-600 dark:text-red-400 font-bold">Failed</span>
                     <button
                       type="button"
                       onClick={() => retryQueueItem(item.id)}
-                      className="text-[10px] font-bold text-red-700 bg-red-50 hover:bg-red-100 px-1.5 py-0.5 rounded border border-red-200">
+                      className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/60 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-800">
                       Retry
                     </button>
                     <button
                       type="button"
                       onClick={() => removeFromQueue(item.id)}
-                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition"
+                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 dark:hover:bg-zinc-900 transition"
                       title="Remove from list">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
-                      <Clock className="w-3 h-3 text-amber-600" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-lg">
+                      <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                       <span>{item.serverManaged ? `Queued · ${item.serverTarget === "local" ? "Laptop" : "Cloud"}` : "Queued"}</span>
                     </span>
                     {startDirectProcessing && (
                       <button
                         type="button"
                         onClick={() => startDirectProcessing(item.id)}
-                        className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition shadow-xs"
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 rounded-md transition shadow-xs"
                         title="Start downloading & watermarking right now in browser">
                         <Play className="w-2.5 h-2.5 fill-current" />
                         <span>Start</span>
@@ -440,7 +440,7 @@ export function UploadQueueDrawer({
                     <button
                       type="button"
                       onClick={() => removeFromQueue(item.id)}
-                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition"
+                      className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 dark:hover:bg-zinc-900 transition"
                       title="Cancel queued task">
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -450,20 +450,20 @@ export function UploadQueueDrawer({
             </div>
 
             {item.status === "uploading" && (
-              <div className="space-y-1 mt-2 pt-1.5 border-t border-slate-100">
-                <div className="flex items-center justify-between text-[10px] text-blue-700 font-medium">
+              <div className="space-y-1 mt-2 pt-1.5 border-t border-slate-100 dark:border-zinc-800">
+                <div className="flex items-center justify-between text-[10px] text-blue-700 dark:text-blue-300 font-medium">
                   <span className="truncate">{item.progressMsg || "Processing & uploading..."}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="font-mono font-bold">{item.progressPercent || 0}%</span>
                     <button
                       type="button"
                       onClick={() => (cancelTask ? cancelTask(item.id) : removeFromQueue(item.id))}
-                      className="text-rose-600 hover:text-rose-800 text-[10px] font-bold hover:underline">
+                      className="text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-[10px] font-bold hover:underline">
                       Stop
                     </button>
                   </div>
                 </div>
-                <div className="w-full bg-blue-100 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-blue-100 dark:bg-blue-900/60 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
                     style={{ width: `${Math.max(item.progressPercent || 0, 5)}%` }}
@@ -473,14 +473,14 @@ export function UploadQueueDrawer({
             )}
 
             {item.status === "queued" && (
-              <div className="space-y-1 mt-2 pt-1.5 border-t border-slate-100">
-                <div className="flex items-center justify-between text-[10px] text-amber-700 font-medium">
+              <div className="space-y-1 mt-2 pt-1.5 border-t border-slate-100 dark:border-zinc-800">
+                <div className="flex items-center justify-between text-[10px] text-amber-700 dark:text-amber-300 font-medium">
                   <span className="truncate">{item.progressMsg || "Queued (ready to stream)..."}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="font-mono font-semibold text-slate-400">0%</span>
                   </div>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-amber-400 h-1.5 rounded-full"
                     style={{ width: "0%" }}
@@ -490,19 +490,19 @@ export function UploadQueueDrawer({
             )}
 
             {item.error && (
-              <p className="text-[10px] text-red-600 truncate">{item.error}</p>
+              <p className="text-[10px] text-red-600 dark:text-red-400 truncate">{item.error}</p>
             )}
           </div>
         ))}
       </div>
 
       {/* Popup Footer Note */}
-      <div className="px-3.5 py-2 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
+      <div className="px-3.5 py-2 bg-slate-100 dark:bg-zinc-950 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
         <span>Transfers run in background</span>
         <button
           type="button"
           onClick={() => setDrawerOpen(false)}
-          className="text-slate-600 hover:text-slate-900 font-semibold flex items-center gap-1">
+          className="text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold flex items-center gap-1">
           <Minimize2 className="w-3 h-3" />
           <span>Minimize</span>
         </button>

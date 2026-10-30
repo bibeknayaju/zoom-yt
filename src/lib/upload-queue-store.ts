@@ -290,20 +290,30 @@ export function trackServerQueueItems(
     .map((item) => updates.get(item.id) || item)
     .concat(additions);
   notifyListeners();
+  void checkServerQueueStatusNow();
 }
 
 /** Refreshes statuses of server-managed items from the recordings poll. */
 export function syncServerQueueStatuses(recordings: any[]) {
   if (!globalQueue.some((i) => i.serverManaged)) return;
 
-  const byId = new Map(
-    recordings.map((r) => [r.zoom_file_id || r.id, r] as [string, any])
-  );
+  const byId = new Map<string, any>();
+  for (const r of recordings) {
+    if (r.id) byId.set(String(r.id), r);
+    if (r.zoom_file_id) byId.set(String(r.zoom_file_id), r);
+    if (r.fileId) byId.set(String(r.fileId), r);
+    if (r.zoom_meeting_id) byId.set(String(r.zoom_meeting_id), r);
+    if (r.meeting_id) byId.set(String(r.meeting_id), r);
+  }
   let changed = false;
 
   const next = globalQueue.map((item) => {
     if (!item.serverManaged) return item;
-    const rec = byId.get(item.id);
+    const rec =
+      byId.get(String(item.id)) ||
+      (item.recording?.id ? byId.get(String(item.recording.id)) : null) ||
+      (item.recording?.zoom_file_id ? byId.get(String(item.recording.zoom_file_id)) : null) ||
+      (item.recording?.fileId ? byId.get(String(item.recording.fileId)) : null);
     if (!rec) return item;
 
     const status = mapServerStatus(rec.status);
@@ -323,11 +333,13 @@ export function syncServerQueueStatuses(recordings: any[]) {
         : item.progressPercent || 0;
 
     const progressMsg =
-      rec.options?.progressMsg ||
-      rec.progress_message ||
-      (status === "uploading" && rec.status
-        ? `${rec.status === "watermarking" ? "Watermarking" : "Uploading"} on ${target === "local" ? "laptop" : "cloud"}...`
-        : serverStatusMessage(rec.status, target));
+      status === "uploaded"
+        ? "Uploaded to YouTube"
+        : rec.options?.progressMsg ||
+          rec.progress_message ||
+          (status === "uploading" && rec.status
+            ? `${rec.status === "watermarking" ? "Watermarking" : "Uploading"} on ${target === "local" ? "laptop" : "cloud"}...`
+            : serverStatusMessage(rec.status, target));
 
     if (
       status === item.status &&
@@ -353,6 +365,32 @@ export function syncServerQueueStatuses(recordings: any[]) {
   if (changed) {
     globalQueue = next;
     notifyListeners();
+  }
+}
+
+let isCheckingServerQueue = false;
+
+/** Automatically queries server status and synchronizes the queue store */
+export async function checkServerQueueStatusNow() {
+  if (typeof window === "undefined" || isCheckingServerQueue) return;
+  const hasServerJobs = globalQueue.some(
+    (i) => i.serverManaged && (i.status === "uploading" || i.status === "queued")
+  );
+  if (!hasServerJobs) return;
+
+  isCheckingServerQueue = true;
+  try {
+    const res = await fetch("/api/zoom-youtube/recordings?limit=100");
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.recordings)) {
+        syncServerQueueStatuses(data.recordings);
+      }
+    }
+  } catch (err) {
+    console.debug("Silent server queue sync check skipped:", err);
+  } finally {
+    isCheckingServerQueue = false;
   }
 }
 
@@ -771,6 +809,19 @@ export function useUploadQueue(onItemComplete?: () => void) {
   const [drawerOpen, setDrawerOpen] = useState(true);
 
   useEffect(() => {
+    // Immediately check server queue on mount so drawer reflects latest DB state
+    void checkServerQueueStatusNow();
+
+    // Setup periodic polling interval if server-managed tasks are active
+    const pollTimer = setInterval(() => {
+      const hasActive = globalQueue.some(
+        (i) => i.serverManaged && (i.status === "uploading" || i.status === "queued")
+      );
+      if (hasActive && typeof document !== "undefined" && document.visibilityState === "visible") {
+        void checkServerQueueStatusNow();
+      }
+    }, 3500);
+
     let lastUploadedCount = globalQueue.filter((i) => i.status === "uploaded" || i.status === "failed").length;
 
     const listener = () => {
@@ -790,6 +841,7 @@ export function useUploadQueue(onItemComplete?: () => void) {
     }
 
     return () => {
+      clearInterval(pollTimer);
       listeners.delete(listener);
     };
   }, [onItemComplete]);

@@ -32,13 +32,24 @@ import {
 } from "lucide-react";
 import { Youtube } from "@/components/icons/Youtube";
 import { useUser } from "@clerk/nextjs";
-import { Navbar } from "@/components/Navbar";
 import { AutoWatermarkTemplateModal } from "@/components/AutoWatermarkTemplateModal";
 import { WatermarkStudio } from "@/components/WatermarkStudio";
 import { useUploadQueue, DirectUploadQueueItem, buildWatermarkConfig, trackServerQueueItems, syncServerQueueStatuses, syncServerQueueFromActivity } from "@/lib/upload-queue-store";
 import { UploadQueueDrawer } from "@/components/UploadQueueDrawer";
 import { ActivityLogsSection } from "@/components/ActivityLogsSection";
 import { Pagination } from "@/components/Pagination";
+import {
+  Button,
+  Input,
+  Badge as ShadBadge,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  Modal,
+  AlertModal,
+} from "@/components/ui";
 
 
 interface StorageInfo {
@@ -231,36 +242,43 @@ export default function ZoomYouTubeDashboardPage() {
 
   const targetShort = processingTarget === "local" ? "Laptop" : "GitHub Workflow";
 
-  const fetchStatus = useCallback(async () => {
+  // Initial full load on mount: fetch static config (devices, youtube, zoom accounts, initial recordings)
+  const fetchStatus = useCallback(async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       setError(null);
-      const [devRes, ytRes, zoomRes, recRes, actRes] = await Promise.all([
-        fetch("/api/zoom-youtube/devices"),
-        fetch("/api/zoom-youtube/youtube/status"),
-        fetch("/api/zoom-youtube/zoom/accounts"),
-        fetch("/api/zoom-youtube/recordings"),
-        fetch("/api/zoom-youtube/activity-logs?limit=50"),
-      ]);
 
-      const devData = devRes.ok ? await devRes.json().catch(() => null) : null;
-      if (devData?.success) {
-        setDevices(devData.devices || []);
-        setPrimaryNodeId(devData.primaryNodeId);
-      } else if (devRes.status === 401) {
-        setError("Session expired. Please sign in again.");
-      } else if (devData?.error) {
-        setError(devData.error);
-      }
+      // Only fetch accounts/devices/youtube on initial mount, NOT in periodic background loop!
+      const requests: Promise<Response>[] = isInitial
+        ? [
+            fetch("/api/zoom-youtube/recordings"),
+            fetch("/api/zoom-youtube/youtube/status"),
+            fetch("/api/zoom-youtube/zoom/accounts"),
+            fetch("/api/zoom-youtube/devices"),
+          ]
+        : [fetch("/api/zoom-youtube/recordings")];
 
-      const ytData = ytRes.ok ? await ytRes.json().catch(() => null) : null;
-      if (ytData?.success) {
-        setYtStatus(ytData);
-      }
+      const responses = await Promise.all(requests);
+      const recRes = responses[0];
 
-      const zoomData = zoomRes.ok ? await zoomRes.json().catch(() => null) : null;
-      if (zoomData?.success) {
-        setZoomAccounts(zoomData.accounts || []);
+      if (isInitial && responses.length >= 4) {
+        const ytRes = responses[1];
+        const zoomRes = responses[2];
+        const devRes = responses[3];
+
+        const ytData = ytRes.ok ? await ytRes.json().catch(() => null) : null;
+        if (ytData?.success) setYtStatus(ytData);
+
+        const zoomData = zoomRes.ok ? await zoomRes.json().catch(() => null) : null;
+        if (zoomData?.success) setZoomAccounts(zoomData.accounts || []);
+
+        const devData = devRes.ok ? await devRes.json().catch(() => null) : null;
+        if (devData?.success) {
+          setDevices(devData.devices || []);
+          setPrimaryNodeId(devData.primaryNodeId);
+        } else if (devRes.status === 401) {
+          setError("Session expired. Please sign in again.");
+        }
       }
 
       let queueTarget: ProcessingTarget = "cloud";
@@ -274,7 +292,6 @@ export default function ZoomYouTubeDashboardPage() {
         setRecordings(list);
         syncServerQueueStatuses(list);
 
-        // Surface jobs already queued on the server (e.g. after a page reload).
         const activeServerJobs = list.filter((r: RecordingItem) =>
           ["queued", "downloading", "watermarking", "uploading", "ready"].includes(r.status)
         );
@@ -282,33 +299,13 @@ export default function ZoomYouTubeDashboardPage() {
           trackServerQueueItems(activeServerJobs, queueTarget);
         }
       }
-
-      // Also surface jobs that are processing but were started outside the enqueue UI.
-      const actData = actRes.ok ? await actRes.json().catch(() => null) : null;
-      if (actData?.success && Array.isArray(actData.logs)) {
-        syncServerQueueFromActivity(actData.logs, queueTarget);
-      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Network error";
       setError(msg);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, []);
-
-  const isAnyJobActive = recordings.some((r) =>
-    ["downloading", "watermarking", "uploading"].includes(r.status)
-  );
-
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        fetchStatus();
-      }
-    }, isAnyJobActive ? 2500 : 20000);
-    return () => clearInterval(interval);
-  }, [fetchStatus, isAnyJobActive]);
 
   const handleSetPrimary = async (nodeId: string) => {
     try {
@@ -591,6 +588,29 @@ export default function ZoomYouTubeDashboardPage() {
     startDirectProcessing: handleStartDirectProcessing,
   } = useUploadQueue(fetchStatus);
 
+  const isAnyJobActive =
+    recordings.some((r) =>
+      ["queued", "downloading", "watermarking", "uploading"].includes(r.status)
+    ) ||
+    uploadQueue.some((i) =>
+      i.serverManaged && (i.status === "queued" || i.status === "uploading")
+    );
+
+  useEffect(() => {
+    // Initial load: fetches status
+    fetchStatus(true);
+
+    // Background poll ONLY if a job is actively processing or queued, otherwise don't poll
+    if (!isAnyJobActive) return;
+
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchStatus(false);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fetchStatus, isAnyJobActive]);
+
   const [enqueuingIds, setEnqueuingIds] = useState<Record<string, boolean>>({});
   const [enqueuingAll, setEnqueuingAll] = useState(false);
   const [triggeringRunner, setTriggeringRunner] = useState(false);
@@ -803,33 +823,27 @@ export default function ZoomYouTubeDashboardPage() {
   const userRole = (user?.publicMetadata?.role as string) === "admin" ? "admin" : "user";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      <Navbar
-        userRole={userRole}
-        userEmail={user?.primaryEmailAddress?.emailAddress}
-        onOpenQueue={() => setQueueDrawerOpen(true)}
-      />
-      <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full flex-1">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-5">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
+      {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-zinc-800 pb-5">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
               Cloud Recordings & Studio
             </h1>
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Browse Zoom cloud recordings, launch Watermark Studio, or run high-speed YouTube uploads.
             </p>
           </div>
           <div className="flex items-center gap-2.5 flex-wrap">
             {/* Target Toggle: Local Laptop vs GitHub Workflow */}
-            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-700/80 shadow-sm">
+            <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xs">
               <button
                 type="button"
                 onClick={() => handleSetProcessingTarget("local")}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   processingTarget === "local"
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 }`}>
                 <Laptop className="w-3.5 h-3.5" />
                 <span>Local Laptop</span>
@@ -840,7 +854,7 @@ export default function ZoomYouTubeDashboardPage() {
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   processingTarget === "cloud"
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 }`}>
                 <Cloud className="w-3.5 h-3.5" />
                 <span>GitHub Workflow</span>
@@ -849,14 +863,14 @@ export default function ZoomYouTubeDashboardPage() {
 
             <button
               onClick={() => setShowTemplateModal(true)}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-amber-300 bg-amber-950/40 border border-amber-700/60 rounded-xl hover:bg-amber-900/50 hover:border-amber-600 transition shadow-sm">
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-900 dark:text-amber-300 transition shadow-sm">
               <Sparkles className="w-4 h-4 text-amber-400" />
               <span>Watermark Template</span>
             </button>
             <button
-              onClick={fetchStatus}
+              onClick={() => fetchStatus(true)}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-200 bg-slate-900 border border-slate-700/80 rounded-xl hover:bg-slate-800 transition shadow-sm disabled:opacity-50">
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-sm disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </button>
@@ -864,15 +878,15 @@ export default function ZoomYouTubeDashboardPage() {
         </div>
 
       {/* Processing Location Selector */}
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl p-6 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+            <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
               <Cloud className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Processing Location</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Processing Location</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Choose where queued recordings are downloaded, watermarked, and uploaded.
               </p>
             </div>
@@ -884,24 +898,24 @@ export default function ZoomYouTubeDashboardPage() {
               onClick={() => handleSetProcessingTarget("local")}
               className={`relative text-left rounded-xl border p-3.5 transition ${
                 processingTarget === "local"
-                  ? "border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/60"
-                  : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                  ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-500/10"
+                  : "border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-950/80 hover:border-slate-300 dark:hover:border-zinc-700"
               }`}>
               <div className="flex items-center gap-2">
-                <Laptop className={`w-4 h-4 ${processingTarget === "local" ? "text-indigo-600" : "text-slate-500"}`} />
-                <span className="text-sm font-bold text-slate-900">Local Laptop</span>
+                <Laptop className={`w-4 h-4 ${processingTarget === "local" ? "text-indigo-400" : "text-slate-400"}`} />
+                <span className="text-sm font-bold text-slate-900 dark:text-white">Local Laptop</span>
                 {processingTarget === "local" && (
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600 ml-auto" />
+                  <CheckCircle2 className="w-4 h-4 text-indigo-400 ml-auto" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
+              <p className="text-[11px] text-slate-400 mt-1">
                 Tasks begin immediately on this local machine with hardware-accelerated watermarking.
               </p>
               <span
                 className={`inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border ${
                   localWorkersOnline.length > 0
-                    ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                    : "text-amber-700 bg-amber-50 border-amber-200"
+                    ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+                    : "text-amber-400 bg-amber-500/10 border-amber-500/30"
                 }`}>
                 <Radio className="w-2.5 h-2.5" />
                 {localWorkersOnline.length > 0
@@ -915,20 +929,20 @@ export default function ZoomYouTubeDashboardPage() {
               onClick={() => handleSetProcessingTarget("cloud")}
               className={`relative text-left rounded-xl border p-3.5 transition ${
                 processingTarget === "cloud"
-                  ? "border-indigo-400 ring-2 ring-indigo-100 bg-indigo-50/60"
-                  : "border-slate-200 bg-slate-50/50 hover:border-slate-300"
+                  ? "border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-500/10"
+                  : "border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-950/80 hover:border-slate-300 dark:hover:border-zinc-700"
               }`}>
               <div className="flex items-center gap-2">
-                <Cloud className={`w-4 h-4 ${processingTarget === "cloud" ? "text-indigo-600" : "text-slate-500"}`} />
-                <span className="text-sm font-bold text-slate-900">GitHub Workflow</span>
+                <Cloud className={`w-4 h-4 ${processingTarget === "cloud" ? "text-indigo-400" : "text-slate-400"}`} />
+                <span className="text-sm font-bold text-slate-900 dark:text-white">GitHub Workflow</span>
                 {processingTarget === "cloud" && (
-                  <CheckCircle2 className="w-4 h-4 text-indigo-600 ml-auto" />
+                  <CheckCircle2 className="w-4 h-4 text-indigo-400 ml-auto" />
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-1">
+              <p className="text-[11px] text-slate-400 mt-1">
                 Queue all videos into database backlog, then trigger one GitHub run to process all at once.
               </p>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border text-purple-700 bg-purple-50 border-purple-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold mt-2 px-1.5 py-0.5 rounded-full border text-purple-400 bg-purple-500/10 border-purple-500/30">
                 <Cloud className="w-2.5 h-2.5" />
                 Cloud Batch Runner
               </span>
@@ -937,32 +951,32 @@ export default function ZoomYouTubeDashboardPage() {
         </div>
 
         {processingTarget === "cloud" && (
-          <div className="mt-4 rounded-xl border border-purple-200/90 bg-gradient-to-r from-purple-50/80 via-indigo-50/40 to-slate-50/50 p-4 shadow-xs space-y-3.5">
+          <div className="mt-4 rounded-xl border border-purple-200/90 dark:border-zinc-800 bg-gradient-to-r from-purple-50/80 via-indigo-50/40 to-slate-50/50 dark:from-black dark:via-black dark:to-black p-4 shadow-xs space-y-3.5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
-                    className={`inline-flex items-center gap-1.5 font-bold text-xs px-2.5 py-0.5 rounded-full border ${
+                    className={`inline-flex items-center gap-1.5 font-bold text-xs px-2.5 py-0.5 rounded-full border transition-colors ${
                       cloudWorkersOnline.length > 0
-                        ? "text-emerald-700 bg-emerald-50 border-emerald-300 shadow-xs animate-pulse"
-                        : "text-slate-700 bg-white border-slate-300"
+                        ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 shadow-xs animate-pulse"
+                        : "text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border-slate-300 dark:border-zinc-800 shadow-xs"
                     }`}>
-                    <Radio className={`w-3 h-3 ${cloudWorkersOnline.length > 0 ? "text-emerald-600" : "text-slate-400"}`} />
+                    <Radio className={`w-3 h-3 ${cloudWorkersOnline.length > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`} />
                     {cloudWorkersOnline.length > 0
                       ? `🟢 Cloud Runner Active (${cloudWorkersOnline[0].label})`
                       : "💤 Cloud Runner Idle (Ready for batch run)"}
                   </span>
 
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                    <Clock className="w-3 h-3 text-purple-600" />
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-zinc-900 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-zinc-800">
+                    <Clock className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                     <span>
                       {queuedCloudRecordings.length} video{queuedCloudRecordings.length === 1 ? "" : "s"} waiting in cloud queue
                     </span>
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-600 max-w-2xl">
-                  Add all ~12 of your daily class recordings to the queue first. Then click <strong>Run Cloud Runner Now</strong> once — GitHub Actions boots a 4-core runner to stream, watermark, and upload all queued videos sequentially in a single run.
+                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-2xl">
+                  Add all ~12 of your daily class recordings to the queue first. Then click <strong className="font-semibold text-slate-900 dark:text-white">Run Cloud Runner Now</strong> once — GitHub Actions boots a 4-core runner to stream, watermark, and upload all queued videos sequentially in a single run.
                 </p>
               </div>
 
@@ -973,8 +987,8 @@ export default function ZoomYouTubeDashboardPage() {
                   disabled={triggeringRunner}
                   className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white rounded-xl shadow-md transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 ${
                     queuedCloudRecordings.length > 0
-                      ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 ring-2 ring-purple-300"
-                      : "bg-slate-800 hover:bg-slate-700"
+                      ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 ring-2 ring-purple-300 dark:ring-purple-900"
+                      : "bg-slate-900 hover:bg-slate-800 dark:bg-zinc-900 dark:hover:bg-zinc-800 border border-slate-700 dark:border-zinc-800"
                   }`}>
                   {triggeringRunner ? (
                     <Loader2 className="w-4 h-4 animate-spin text-white" />
@@ -994,7 +1008,7 @@ export default function ZoomYouTubeDashboardPage() {
                   href="https://github.com/bibeknayaju/zoom-yt/actions"
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs"
                   title="Open GitHub Actions workflows tab in a new window">
                   <span>View Live Runs</span>
                   <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
@@ -1002,10 +1016,10 @@ export default function ZoomYouTubeDashboardPage() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-purple-100 flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
+            <div className="pt-2 border-t border-purple-100 dark:border-zinc-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 flex-wrap gap-2">
               <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-purple-600" />
-                <span>Automated batch schedule: <strong>7:45 AM & 10:30 PM NPT</strong> daily (automatically drains backlog)</span>
+                <Clock className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Automated batch schedule: <strong className="font-semibold text-slate-900 dark:text-white">7:45 AM & 10:30 PM NPT</strong> daily (automatically drains backlog)</span>
               </span>
               <span className="text-slate-400">Single runner execution • Zero rate-limit waste</span>
             </div>
@@ -1013,18 +1027,18 @@ export default function ZoomYouTubeDashboardPage() {
         )}
 
         {processingTarget === "local" && (
-          <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="mt-3 rounded-lg border border-indigo-100 dark:border-indigo-950/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs">
               <span
                 className={`inline-flex items-center gap-1.5 font-semibold px-2 py-0.5 rounded-full border ${
                   localWorkerRunning
-                    ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                    : "text-slate-600 bg-slate-100 border-slate-200"
+                    ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800"
+                    : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800"
                 }`}>
-                <Radio className={`w-2.5 h-2.5 ${localWorkerRunning ? "animate-pulse text-emerald-600" : ""}`} />
+                <Radio className={`w-2.5 h-2.5 ${localWorkerRunning ? "animate-pulse text-emerald-600 dark:text-emerald-400" : ""}`} />
                 npm run worker: {localWorkerRunning ? "Running" : "Stopped"}
               </span>
-              <span className="text-slate-500">
+              <span className="text-slate-500 dark:text-slate-400">
                 {workerMsg || "Local worker picks up recordings targeted at this laptop."}
               </span>
             </div>
@@ -1034,7 +1048,7 @@ export default function ZoomYouTubeDashboardPage() {
               disabled={workerBusy}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border shadow-sm transition disabled:opacity-50 self-start sm:self-auto ${
                 localWorkerRunning
-                  ? "text-rose-700 bg-white border-rose-200 hover:bg-rose-50"
+                  ? "text-rose-700 dark:text-rose-300 bg-white dark:bg-black border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                   : "text-white bg-indigo-600 border-indigo-600 hover:bg-indigo-700"
               }`}>
               {workerBusy ? (
@@ -1078,18 +1092,18 @@ export default function ZoomYouTubeDashboardPage() {
       )}
 
       {/* Physical Hardware Laptops Section (Collapsible) */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl shadow-xl overflow-hidden">
         <button
           type="button"
           onClick={() => setShowDevicesSection((prev) => !prev)}
-          className="w-full flex items-center justify-between p-4 bg-slate-50/60 hover:bg-slate-100/80 transition text-left">
+          className="w-full flex items-center justify-between p-4 bg-slate-50/70 hover:bg-slate-100/70 dark:bg-black dark:hover:bg-zinc-900/60 transition text-left">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100">
               <Laptop className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Physical Worker Laptops ({physicalDevices.length})
                 </h3>
                 {localWorkersOnline.length > 0 ? (
@@ -1097,7 +1111,7 @@ export default function ZoomYouTubeDashboardPage() {
                     <Radio className="w-2 h-2 animate-pulse text-emerald-600" /> {localWorkersOnline.length} online
                   </span>
                 ) : (
-                  <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full border border-slate-200 dark:border-zinc-800">
                     No laptop worker running
                   </span>
                 )}
@@ -1122,13 +1136,13 @@ export default function ZoomYouTubeDashboardPage() {
         </button>
 
         {showDevicesSection && (
-          <div className="p-5 border-t border-slate-200 bg-white">
+          <div className="p-5 border-t border-slate-200 dark:border-zinc-800 bg-white dark:bg-black">
             {physicalDevices.length === 0 && !loading && (
-              <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+              <div className="text-center py-8 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50/50 dark:bg-zinc-950">
                 <Laptop className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <p className="text-sm font-medium text-slate-600">No physical worker laptops reported yet</p>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No physical worker laptops reported yet</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                  Run <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800">npm run worker</code> on your Office Laptop to register its disk storage here.
+                  Run <code className="bg-slate-200 dark:bg-zinc-800 px-1 py-0.5 rounded text-slate-800 dark:text-slate-200">npm run worker</code> on your Office Laptop to register its disk storage here.
                 </p>
               </div>
             )}
@@ -1146,27 +1160,27 @@ export default function ZoomYouTubeDashboardPage() {
                 return (
                   <div
                     key={device.nodeId}
-                    className={`relative rounded-xl border bg-white p-5 shadow-xs transition-all ${
+                    className={`relative rounded-xl border bg-white dark:bg-zinc-950 p-5 shadow-xs transition-all ${
                       isPrimary
-                        ? "border-indigo-400 ring-2 ring-indigo-100"
-                        : "border-slate-200 hover:border-slate-300"
+                        ? "border-indigo-400 ring-2 ring-indigo-100 dark:ring-indigo-950/60"
+                        : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700"
                     }`}>
                     {/* Card Top: Node Info + Role Badge */}
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-slate-900">{device.label}</h4>
+                          <h4 className="text-sm font-bold text-slate-900 dark:text-white">{device.label}</h4>
                           {device.isOnline ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <Radio className="w-2 h-2 animate-pulse text-emerald-600" /> Online
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                              <Radio className="w-2 h-2 animate-pulse text-emerald-600 dark:text-emerald-400" /> Online
                             </span>
                           ) : (
-                            <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
                               Seen {device.secondsAgo}s ago
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                           Hostname: {device.system?.hostname} • {device.system?.platform} ({device.system?.arch})
                         </p>
                       </div>
@@ -1176,7 +1190,7 @@ export default function ZoomYouTubeDashboardPage() {
                           <Star className="w-3 h-3 fill-current" /> Primary Node
                         </span>
                       ) : (
-                        <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                        <span className="text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
                           Backup
                         </span>
                       )}
@@ -1184,19 +1198,19 @@ export default function ZoomYouTubeDashboardPage() {
 
                     {/* Storage Health Gauge */}
                     {storage && (
-                      <div className="rounded-lg bg-slate-50 p-3 border border-slate-100 mb-3 space-y-1.5">
+                      <div className="rounded-lg bg-slate-50 dark:bg-black p-3 border border-slate-100 dark:border-zinc-800/80 mb-3 space-y-1.5">
                         <div className="flex items-center justify-between text-xs font-medium">
-                          <div className="flex items-center gap-1.5 text-slate-700">
-                            <HardDrive className="w-3.5 h-3.5 text-slate-500" />
+                          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                            <HardDrive className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                             <span>Disk Storage</span>
                           </div>
-                          <span className={isLow ? "text-amber-600 font-bold" : "text-emerald-700 font-bold"}>
+                          <span className={isLow ? "text-amber-600 font-bold" : "text-emerald-700 dark:text-emerald-400 font-bold"}>
                             {storage.freeGB} GB Free ({storage.freePercentage}%)
                           </span>
                         </div>
 
                         {/* Progress Bar */}
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                        <div className="w-full bg-slate-200 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${
                               storage.status === "critical"
@@ -1209,7 +1223,7 @@ export default function ZoomYouTubeDashboardPage() {
                           />
                         </div>
 
-                        <div className="flex justify-between text-[10px] text-slate-500">
+                        <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400">
                           <span>Used: {storage.usedGB} GB</span>
                           <span>Total: {storage.totalGB} GB</span>
                         </div>
@@ -1217,7 +1231,7 @@ export default function ZoomYouTubeDashboardPage() {
                     )}
 
                     {/* Hardware Specs */}
-                    <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 mb-4 bg-slate-50/50 p-2.5 rounded-lg">
+                    <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 dark:text-slate-400 mb-4 bg-slate-50/50 dark:bg-black p-2.5 rounded-lg border border-slate-100 dark:border-zinc-800/80">
                       <div className="flex items-center gap-2">
                         <Cpu className="w-3.5 h-3.5 text-slate-400" />
                         <span>{device.system?.cpus} Cores ({device.system?.cpuModel?.slice(0, 18)})</span>
@@ -1228,16 +1242,16 @@ export default function ZoomYouTubeDashboardPage() {
                     </div>
 
                     {/* Action: Set as Primary */}
-                    <div className="border-t pt-3 flex items-center justify-between">
+                    <div className="border-t border-slate-100 dark:border-zinc-800 pt-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-slate-400">
-                          ID: <code className="text-slate-600">{device.nodeId}</code>
+                          ID: <code className="text-slate-600 dark:text-slate-400">{device.nodeId}</code>
                         </span>
                         {!isPrimary && (
                           <button
                             onClick={() => handleDeleteDevice(device.nodeId)}
                             title="Remove device from monitoring list"
-                            className="text-slate-300 hover:text-red-500 transition p-0.5 rounded">
+                            className="text-slate-300 dark:text-slate-600 hover:text-red-500 transition p-0.5 rounded">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -1246,12 +1260,12 @@ export default function ZoomYouTubeDashboardPage() {
                         <button
                           onClick={() => handleSetPrimary(device.nodeId)}
                           disabled={updatingNode === device.nodeId}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1 rounded-lg transition disabled:opacity-50">
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 px-3 py-1 rounded-lg transition disabled:opacity-50">
                           <Star className="w-3 h-3" />
                           {updatingNode === device.nodeId ? "Switching..." : "Set as Primary"}
                         </button>
                       ) : (
-                        <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
+                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Active Worker
                         </span>
                       )}
@@ -1265,7 +1279,7 @@ export default function ZoomYouTubeDashboardPage() {
       </div>
 
       {/* YouTube Connection Card */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl p-6 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
           <div className="flex items-start gap-4">
             {/* Channel Avatar or YouTube Icon */}
@@ -1274,14 +1288,14 @@ export default function ZoomYouTubeDashboardPage() {
               <img
                 src={ytStatus.channel.thumbnailUrl}
                 alt={ytStatus.channel.title}
-                className="w-14 h-14 rounded-full border-2 border-red-100 shadow-sm object-cover shrink-0"
+                className="w-14 h-14 rounded-full border-2 border-red-500/40 shadow-sm object-cover shrink-0"
               />
             ) : (
               <div
                 className={`p-3.5 rounded-2xl border shrink-0 ${
                   ytStatus?.connected
-                    ? "bg-red-50 text-red-600 border-red-100"
-                    : "bg-slate-100 text-slate-400 border-slate-200"
+                    ? "bg-red-500/10 text-red-400 border-red-500/30"
+                    : "bg-slate-900 text-slate-500 border-slate-800"
                 }`}>
                 <Youtube className="w-7 h-7" />
               </div>
@@ -1293,11 +1307,11 @@ export default function ZoomYouTubeDashboardPage() {
                   YouTube Target
                 </span>
                 {ytStatus?.connected ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Connected
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Connected
                   </span>
                 ) : (
-                  <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  <span className="text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
                     Not Connected
                   </span>
                 )}
@@ -1305,7 +1319,7 @@ export default function ZoomYouTubeDashboardPage() {
 
               {/* Prominent Channel Name */}
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-slate-900">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
                   {ytStatus?.channel?.title || "No Channel Connected"}
                 </h3>
                 {ytStatus?.channel?.id && ytStatus.channel.id !== "configured_in_env" && (
@@ -1313,7 +1327,7 @@ export default function ZoomYouTubeDashboardPage() {
                     href={`https://www.youtube.com/channel/${ytStatus.channel.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-slate-400 hover:text-red-600 transition"
+                    className="text-slate-400 hover:text-red-400 transition"
                     title="Open on YouTube">
                     <ExternalLink className="w-4 h-4" />
                   </a>
@@ -1321,21 +1335,21 @@ export default function ZoomYouTubeDashboardPage() {
               </div>
 
               {ytStatus?.channel?.id && (
-                <p className="text-xs text-slate-500 font-mono">
+                <p className="text-xs text-slate-400 font-mono">
                   Channel ID: {ytStatus.channel.id}
                 </p>
               )}
 
               <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
-                <span className="inline-flex items-center gap-1 text-slate-600 font-medium bg-slate-100 px-2.5 py-0.5 rounded-md">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> AES-256-GCM Encrypted
+                <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium bg-slate-100 dark:bg-zinc-900 px-2.5 py-0.5 rounded-md border border-slate-200 dark:border-zinc-800">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> AES-256-GCM Encrypted
                 </span>
-                <span className="text-slate-600">
+                <span className="text-slate-500 dark:text-slate-400">
                   Daily Quota:{" "}
-                  <strong className="text-slate-900">
+                  <strong className="text-slate-900 dark:text-white">
                     {ytStatus?.quota?.unitsUsedToday ?? 0} / 48,000 units
                   </strong>{" "}
-                  <span className="text-slate-400">(resets Midnight Pacific)</span>
+                  <span className="text-slate-500">(resets Midnight Pacific)</span>
                 </span>
               </div>
             </div>
@@ -1344,146 +1358,53 @@ export default function ZoomYouTubeDashboardPage() {
           <div className="shrink-0">
             <a
               href="/api/zoom-youtube/youtube/auth"
-              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg shadow-sm transition ${
+              className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl shadow-md transition ${
                 ytStatus?.connected
-                  ? "text-slate-700 bg-white border border-slate-300 hover:bg-slate-50"
-                  : "text-white bg-red-600 hover:bg-red-700"
+                  ? "text-slate-200 bg-slate-900 border border-slate-700 hover:bg-slate-800"
+                  : "text-white bg-red-600 hover:bg-red-500 shadow-red-600/20"
               }`}>
-              <Youtube className="w-4 h-4 text-red-600" />
-              {ytStatus?.connected ? "Switch / Reconnect Channel" : "Connect YouTube Channel"}
+              <Youtube className="w-4 h-4 text-red-500" />
+              <span>{ytStatus?.connected ? "Switch / Reconnect Channel" : "Connect YouTube Channel"}</span>
             </a>
           </div>
         </div>
       </div>
 
       {/* Zoom Accounts Section */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl p-6 shadow-xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+            <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20">
               <Video className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
                 Zoom Cloud Accounts (Server-to-Server OAuth)
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Connect your Zoom accounts to auto-discover and stream cloud recordings for watermarking.
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => setShowAddZoom(!showAddZoom)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition self-start sm:self-auto">
+          <Button
+            onClick={() => setShowAddZoom(true)}
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-500 self-start sm:self-auto"
+          >
             <Plus className="w-4 h-4" />
-            {showAddZoom ? "Close Form" : "Add Zoom S2S Account"}
-          </button>
+            <span>Add Zoom S2S Account</span>
+          </Button>
         </div>
 
-        {/* Add Zoom Account Form */}
-        {showAddZoom && (
-          <form
-            onSubmit={handleAddZoomAccount}
-            className="rounded-xl border border-blue-200 bg-blue-50/40 p-5 space-y-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-blue-900">
-              <Key className="w-4 h-4 text-blue-600" />
-              <span>Connect New Zoom Server-to-Server App</span>
-            </div>
-            <p className="text-xs text-slate-600">
-              Create a <strong>Server-to-Server OAuth</strong> app on{" "}
-              <a
-                href="https://marketplace.zoom.us/develop/create"
-                target="_blank"
-                rel="noreferrer"
-                className="text-blue-600 underline font-medium">
-                marketplace.zoom.us
-              </a>
-              . Ensure you grant the scope: <code className="bg-blue-100 px-1 py-0.5 rounded text-blue-800">recording:read:admin</code>.
-            </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Account Label / Nickname
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Main Union Education Account"
-                  value={newZoom.accountName}
-                  onChange={(e) => setNewZoom({ ...newZoom, accountName: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Zoom Account ID
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. pI5GqK2..."
-                  value={newZoom.accountId}
-                  onChange={(e) => setNewZoom({ ...newZoom, accountId: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Client ID
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. jB7aC9..."
-                  value={newZoom.clientId}
-                  onChange={(e) => setNewZoom({ ...newZoom, clientId: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Client Secret
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••••••••••"
-                  value={newZoom.clientSecret}
-                  onChange={(e) => setNewZoom({ ...newZoom, clientSecret: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowAddZoom(false)}
-                className="px-3.5 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition">
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={savingZoom}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition disabled:opacity-50">
-                {savingZoom ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                {savingZoom ? "Verifying with Zoom..." : "Save & Verify Connection"}
-              </button>
-            </div>
-          </form>
-        )}
 
         {/* Zoom Accounts List */}
         {zoomAccounts.length === 0 && !showAddZoom ? (
-          <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+          <div className="text-center py-8 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50/50 dark:bg-black">
             <Video className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-            <p className="text-sm font-medium text-slate-600">No Zoom accounts connected yet</p>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No Zoom accounts connected yet</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Click &quot;Add Zoom S2S Account&quot; above to connect your first account.
             </p>
           </div>
@@ -1492,15 +1413,15 @@ export default function ZoomYouTubeDashboardPage() {
             {zoomAccounts.map((acc) => (
               <div
                 key={acc.id}
-                className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                className="border border-slate-200 dark:border-zinc-800 rounded-xl p-4 bg-slate-50/50 dark:bg-zinc-950 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h4 className="text-sm font-bold text-slate-900">{acc.accountName}</h4>
-                    <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">{acc.accountName}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
                       Account ID: {acc.accountId}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Active
                   </span>
                 </div>
@@ -1511,7 +1432,7 @@ export default function ZoomYouTubeDashboardPage() {
                   </p>
                 )}
 
-                <div className="flex items-center justify-between border-t pt-3">
+                <div className="flex items-center justify-between border-t border-slate-200 dark:border-zinc-800 pt-3">
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleBrowseZoomAccount(acc)}
@@ -1546,326 +1467,306 @@ export default function ZoomYouTubeDashboardPage() {
       </div>
 
       {/* Browse Cloud Recordings Modal */}
-      {selectedZoomAccountForBrowse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-5 border-b flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-100 text-blue-700 rounded-xl">
-                  <Film className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Cloud Recordings: {selectedZoomAccountForBrowse.accountName}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Browse recent classes from Zoom and choose which recording to download, watermark, and upload to YouTube.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {browsedRecordings.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {/* Target Toggle: Local Laptop vs GitHub Workflow */}
-                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => handleSetProcessingTarget("local")}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-bold transition ${
-                          processingTarget === "local"
-                            ? "bg-indigo-600 text-white shadow-sm"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                        title="Run task immediately on local laptop">
-                        <Laptop className="w-3.5 h-3.5" />
-                        <span>Laptop</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleSetProcessingTarget("cloud")}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-bold transition ${
-                          processingTarget === "cloud"
-                            ? "bg-indigo-600 text-white shadow-sm"
-                            : "text-slate-600 hover:text-slate-900"
-                        }`}
-                        title="Automatically trigger GitHub Actions workflow in cloud">
-                        <Cloud className="w-3.5 h-3.5" />
-                        <span>GitHub Workflow</span>
-                      </button>
-                    </div>
-
-                    <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
-                      {(["720p", "1080p", "480p"] as const).map((q) => (
-                        <button
-                          key={q}
-                          type="button"
-                          onClick={() => setQueueResolution(q)}
-                          className={`px-2 py-1 rounded text-[11px] font-bold transition ${
-                            currentResolution === q
-                              ? "bg-indigo-600 text-white shadow-sm"
-                              : "text-slate-600 hover:text-slate-900"
-                          }`}>
-                          {q === "720p" ? "⚡ 720p" : q}
-                        </button>
-                      ))}
-                    </div>
-                    {/* Auto Watermark Default Toggle */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextVal = !modalAutoWatermark;
-                        setModalAutoWatermark(nextVal);
-                        setRecWatermarkOverrides({});
-                      }}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition ${
-                        modalAutoWatermark
-                          ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
-                          : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
-                      }`}
-                      title={modalAutoWatermark ? "Auto-Watermark is ON: Downloads & watermarks simultaneously per frame/per byte on the fly. Click to turn OFF." : "Auto-Watermark is OFF (Raw Upload). Click to turn ON."}>
-                      <Sparkles className={`w-3.5 h-3.5 ${modalAutoWatermark ? "text-amber-600" : "text-slate-400"}`} />
-                      <span>{modalAutoWatermark ? "Auto WM: ON" : "No WM (Raw)"}</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        const unUploaded = browsedRecordings.filter(
-                          (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued"
-                        );
-                        if (unUploaded.length === 0) {
-                          showToast({
-                            type: "info",
-                            title: "Queue Up to Date",
-                            message: "All recordings in this list are already queued or uploaded!",
-                          });
-                          return;
-                        }
-                        handleEnqueueCloudRecordings(
-                          unUploaded,
-                          modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
-                          modalAutoWatermark ? currentResolution : "original"
-                        );
-                      }}
-                      disabled={enqueuingAll}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 border border-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50">
-                      {enqueuingAll ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : processingTarget === "local" ? (
-                        <Laptop className="w-3.5 h-3.5" />
-                      ) : (
-                        <Cloud className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {processingTarget === "local"
-                          ? `⚡ Start All on Laptop (${browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})`
-                          : `☁️ Queue All for Cloud (${browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})`}
-                      </span>
-                    </button>
-                  </div>
-                )}
+      <Modal
+        isOpen={Boolean(selectedZoomAccountForBrowse)}
+        onClose={() => setSelectedZoomAccountForBrowse(null)}
+        title={selectedZoomAccountForBrowse ? `Cloud Recordings: ${selectedZoomAccountForBrowse.accountName}` : "Cloud Recordings"}
+        description="Browse recent classes from Zoom and choose which recording to download, watermark, and upload to YouTube."
+        icon={<Film className="w-5 h-5 text-blue-400" />}
+        size="5xl"
+        headerActions={
+          browsedRecordings.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Target Toggle: Local Laptop vs GitHub Workflow */}
+              <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-0.5 rounded-lg border border-slate-200 dark:border-zinc-800 text-xs">
                 <button
-                  onClick={() => setSelectedZoomAccountForBrowse(null)}
-                  className="text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200 text-sm font-bold transition">
-                  ✕ Close
+                  type="button"
+                  onClick={() => handleSetProcessingTarget("local")}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                    processingTarget === "local"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                  title="Run task immediately on local laptop">
+                  <Laptop className="w-3.5 h-3.5" />
+                  <span>Laptop</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetProcessingTarget("cloud")}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition ${
+                    processingTarget === "cloud"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                  }`}
+                  title="Automatically trigger GitHub Actions workflow in cloud">
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>Cloud</span>
                 </button>
               </div>
+
+              <div className="hidden sm:flex items-center bg-slate-100 dark:bg-zinc-900 p-0.5 rounded-lg border border-slate-200 dark:border-zinc-800 text-xs">
+                {(["720p", "1080p", "480p"] as const).map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setQueueResolution(q)}
+                    className={`px-2 py-1 rounded text-[11px] font-bold transition ${
+                      currentResolution === q
+                        ? "bg-indigo-600 text-white shadow-xs"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                    }`}>
+                    {q === "720p" ? "⚡ 720p" : q}
+                  </button>
+                ))}
+              </div>
+
+              {/* Auto Watermark Default Toggle */}
+              <Button
+                type="button"
+                size="sm"
+                variant={modalAutoWatermark ? "amber" : "outline"}
+                onClick={() => {
+                  const nextVal = !modalAutoWatermark;
+                  setModalAutoWatermark(nextVal);
+                  setRecWatermarkOverrides({});
+                }}
+                className="text-xs"
+                title={modalAutoWatermark ? "Auto-Watermark is ON" : "Auto-Watermark is OFF (Raw)"}>
+                <Sparkles className={`w-3.5 h-3.5 ${modalAutoWatermark ? "text-amber-400" : "text-slate-400"}`} />
+                <span>{modalAutoWatermark ? "Auto WM: ON" : "No WM (Raw)"}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="premium"
+                onClick={() => {
+                  const unUploaded = browsedRecordings.filter(
+                    (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued"
+                  );
+                  if (unUploaded.length === 0) {
+                    showToast({
+                      type: "info",
+                      title: "Queue Up to Date",
+                      message: "All recordings in this list are already queued or uploaded!",
+                    });
+                    return;
+                  }
+                  handleEnqueueCloudRecordings(
+                    unUploaded,
+                    modalAutoWatermark ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
+                    modalAutoWatermark ? currentResolution : "original"
+                  );
+                }}
+                disabled={enqueuingAll}
+                loading={enqueuingAll}
+                className="text-xs">
+                {processingTarget === "local" ? (
+                  <Laptop className="w-3.5 h-3.5" />
+                ) : (
+                  <Cloud className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {processingTarget === "local"
+                    ? `Start All on Laptop (${browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})`
+                    : `Queue All for Cloud (${browsedRecordings.filter((r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued").length})`}
+                </span>
+              </Button>
             </div>
+          ) : undefined
+        }
+      >
+        <div className="space-y-3">
+          {loadingBrowse ? (
+            <div className="py-16 text-center text-slate-400 space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />
+              <p className="text-sm font-medium">Scanning Zoom Cloud for meetings in the last 30 days...</p>
+            </div>
+          ) : browsedRecordings.length === 0 ? (
+            <div className="py-16 text-center text-slate-400 space-y-2">
+              <Film className="w-10 h-10 mx-auto text-slate-600" />
+              <p className="text-sm font-medium text-slate-300">No cloud recordings found for this account in the last 30 days.</p>
+              <p className="text-xs text-slate-500">Make sure cloud recording was enabled during the meeting and finished processing on Zoom.</p>
+            </div>
+          ) : (
+            browsedRecordings.map((rec) => {
+              const isProcessing = processingFileId === rec.fileId;
+              const statusMsg = processStatusMsg[rec.fileId];
+              const toMB = (bytes: number) => Math.round(bytes / (1024 * 1024));
 
-            <div className="p-5 overflow-y-auto flex-1 space-y-3">
-              {loadingBrowse ? (
-                <div className="py-16 text-center text-slate-500 space-y-3">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600" />
-                  <p className="text-sm font-medium">Scanning Zoom Cloud for meetings in the last 30 days...</p>
-                </div>
-              ) : browsedRecordings.length === 0 ? (
-                <div className="py-16 text-center text-slate-500 space-y-2">
-                  <Film className="w-10 h-10 mx-auto text-slate-300" />
-                  <p className="text-sm font-medium">No cloud recordings found for this account in the last 30 days.</p>
-                  <p className="text-xs text-slate-400">Make sure cloud recording was enabled during the meeting and finished processing on Zoom.</p>
-                </div>
-              ) : (
-                browsedRecordings.map((rec) => {
-                  const isProcessing = processingFileId === rec.fileId;
-                  const statusMsg = processStatusMsg[rec.fileId];
-                  const toMB = (bytes: number) => Math.round(bytes / (1024 * 1024));
-                  const queueItem = uploadQueue.find((q) => q.id === rec.fileId);
-                  const queuePosition = queueItem && queueItem.status === "queued"
-                    ? uploadQueue.filter((q) => q.status === "queued").findIndex((q) => q.id === rec.fileId) + 1
-                    : null;
+              return (
+                <div
+                  key={rec.fileId}
+                  className="border border-slate-200 dark:border-zinc-800 rounded-xl p-4 bg-slate-50/70 dark:bg-zinc-950/80 hover:border-slate-300 dark:hover:border-zinc-700 transition space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">{rec.topic}</h4>
+                        {rec.totalParts && rec.totalParts > 1 && (
+                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 px-2 py-0.5 rounded-full">
+                            Part {rec.partNumber} of {rec.totalParts}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span>Teacher: <strong className="text-slate-700 dark:text-slate-200">{rec.hostName}</strong></span>
+                        <span>•</span>
+                        <span>{new Date(rec.startTime).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        <span>•</span>
+                        <span>{rec.durationMinutes} mins</span>
+                        <span>•</span>
+                        <span className="font-mono bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-zinc-800">
+                          📹 Video: {toMB(rec.fileSizeBytes)} MB
+                        </span>
+                        {rec.recordingType && (
+                          <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
+                            {rec.recordingType.replace(/_/g, " ")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                  return (
-                    <div
-                      key={rec.fileId}
-                      className="border border-slate-200 rounded-xl p-4 bg-white hover:border-blue-300 transition space-y-2">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="text-sm font-bold text-slate-900">{rec.topic}</h4>
-                            {rec.totalParts && rec.totalParts > 1 && (
-                              <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-                                Part {rec.partNumber} of {rec.totalParts}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                            <span>Teacher: <strong className="text-slate-700">{rec.hostName}</strong></span>
-                            <span>•</span>
-                            <span>{new Date(rec.startTime).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                            <span>•</span>
-                            <span>{rec.durationMinutes} mins</span>
-                            <span>•</span>
-                            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-semibold">
-                              📹 Video: {toMB(rec.fileSizeBytes)} MB
-                            </span>
-                            {rec.recordingType && (
-                              <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                {rec.recordingType.replace(/_/g, " ")}
-                              </span>
-                            )}
-                          </div>
+                    <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end">
+                      {rec.status === "uploaded" || rec.youtubeUrl ? (
+                        <a
+                          href={rec.youtubeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition shadow-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Uploaded (View YT)</span>
+                          <ExternalLink className="w-3 h-3 text-emerald-400" />
+                        </a>
+                      ) : rec.status === "downloading" || rec.status === "watermarking" || rec.status === "uploading" ? (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-400 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                          <span className="capitalize">⚙️ Cloud: {rec.status}...</span>
                         </div>
-
-                        <div className="shrink-0 flex items-center gap-2 flex-wrap justify-end">
-                          {rec.status === "uploaded" || rec.youtubeUrl ? (
-                            <a
-                              href={rec.youtubeUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition shadow-sm">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Uploaded (View YT)</span>
-                              <ExternalLink className="w-3 h-3 text-emerald-600" />
-                            </a>
-                          ) : rec.status === "downloading" || rec.status === "watermarking" || rec.status === "uploading" ? (
-                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                              <span className="capitalize">⚙️ Cloud: {rec.status}...</span>
-                            </div>
-                          ) : rec.status === "queued" ? (
-                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl">
-                              <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>⏳ Queued for {processingTarget === "local" ? "Local Worker" : "Cloud Runner"}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleCancelQueuedRecording(rec.fileId)}
-                                className="text-slate-400 hover:text-red-500 font-bold ml-1 text-sm"
-                                title="Cancel and unqueue">
-                                ✕
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              {(() => {
-                                const isRowWm =
-                                  recWatermarkOverrides[rec.fileId] !== undefined
-                                    ? recWatermarkOverrides[rec.fileId]
-                                    : modalAutoWatermark;
-                                const isEnqueuing = Boolean(enqueuingIds[rec.fileId]);
-                                return (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setRecWatermarkOverrides((prev) => ({
-                                          ...prev,
-                                          [rec.fileId]: !isRowWm,
-                                        }))
-                                      }
-                                      className={`inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold border transition ${
-                                        isRowWm
-                                          ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
-                                          : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
-                                      }`}
-                                      title={
-                                        isRowWm
-                                          ? "Auto-Watermark is enabled: Downloads & watermarks on the fly per frame/byte. Click to upload raw."
-                                          : "Watermarking is disabled (Raw). Click to enable Auto Watermark."
-                                      }>
-                                      {isRowWm ? (
-                                        <>
-                                          <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                                          <span>✨ WM: ON</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <span className="text-slate-400 text-xs">🚫</span>
-                                          <span>Raw</span>
-                                        </>
-                                      )}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleEnqueueCloudRecordings(
-                                          [rec],
-                                          isRowWm ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
-                                          isRowWm ? currentResolution : "original"
-                                        )
-                                      }
-                                      disabled={isEnqueuing}
-                                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition hover:scale-[1.02] disabled:opacity-50">
-                                      {isEnqueuing ? (
-                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                      ) : processingTarget === "local" ? (
-                                        <Laptop className="w-3.5 h-3.5 text-indigo-200" />
-                                      ) : (
-                                        <Cloud className="w-3.5 h-3.5 text-indigo-200" />
-                                      )}
-                                      <span>
-                                        {processingTarget === "local" ? "⚡ Start on Laptop" : "☁️ Queue for Cloud"}
-                                      </span>
-                                    </button>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          )}
-
+                      ) : rec.status === "queued" ? (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          <span>⏳ Queued for {processingTarget === "local" ? "Local Worker" : "Cloud Runner"}</span>
                           <button
-                            onClick={() => {
-                              try {
-                                sessionStorage.setItem("zoomyt_selected_recording", JSON.stringify(rec));
-                              } catch {}
-                              router.push("/dashboard/studio");
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl shadow-sm transition hover:scale-[1.02]">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                            <span>Watermark Studio</span>
+                            type="button"
+                            onClick={() => handleCancelQueuedRecording(rec.fileId)}
+                            className="text-slate-400 hover:text-rose-400 font-bold ml-1 text-sm"
+                            title="Cancel and unqueue">
+                            ✕
                           </button>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          {(() => {
+                            const isRowWm =
+                              recWatermarkOverrides[rec.fileId] !== undefined
+                                ? recWatermarkOverrides[rec.fileId]
+                                : modalAutoWatermark;
+                            const isEnqueuing = Boolean(enqueuingIds[rec.fileId]);
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRecWatermarkOverrides((prev) => ({
+                                      ...prev,
+                                      [rec.fileId]: !isRowWm,
+                                    }))
+                                  }
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${
+                                    isRowWm
+                                      ? "bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25"
+                                      : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-slate-200"
+                                  }`}
+                                  title={
+                                    isRowWm
+                                      ? "Auto-Watermark is enabled. Click to upload raw."
+                                      : "Watermarking is disabled (Raw). Click to enable Auto Watermark."
+                                  }>
+                                  {isRowWm ? (
+                                    <>
+                                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>✨ WM: ON</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="text-slate-500 text-xs">🚫</span>
+                                      <span>Raw</span>
+                                    </>
+                                  )}
+                                </button>
 
-                      {statusMsg && (
-                        <p className={`text-xs p-2.5 rounded-lg font-medium ${
-                          statusMsg.startsWith("Uploaded")
-                            ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                            : statusMsg.startsWith("Failed") || statusMsg.startsWith("Error")
-                            ? "bg-red-50 text-red-800 border border-red-200"
-                            : "bg-blue-50 text-blue-800 border border-blue-200"
-                        }`}>
-                          {statusMsg}
-                        </p>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    handleEnqueueCloudRecordings(
+                                      [rec],
+                                      isRowWm ? buildWatermarkConfig(currentWatermarkPreset) : { type: "none" },
+                                      isRowWm ? currentResolution : "original"
+                                    )
+                                  }
+                                  disabled={isEnqueuing}
+                                  loading={isEnqueuing}
+                                  className="bg-indigo-600 hover:bg-indigo-500 text-xs"
+                                >
+                                  {processingTarget === "local" ? (
+                                    <Laptop className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <Cloud className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>
+                                    {processingTarget === "local" ? "Start on Laptop" : "Queue for Cloud"}
+                                  </span>
+                                </Button>
+                              </>
+                            );
+                          })()}
+                        </div>
                       )}
+
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          try {
+                            sessionStorage.setItem("zoomyt_selected_recording", JSON.stringify(rec));
+                          } catch {}
+                          router.push("/dashboard/studio");
+                        }}
+                        className="text-xs"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Studio</span>
+                      </Button>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+                  </div>
+
+                  {statusMsg && (
+                    <p className={`text-xs p-2.5 rounded-lg font-medium border ${
+                      statusMsg.startsWith("Uploaded")
+                        ? "bg-emerald-950/40 text-emerald-300 border-emerald-800/60"
+                        : statusMsg.startsWith("Failed") || statusMsg.startsWith("Error")
+                        ? "bg-rose-950/40 text-rose-300 border-rose-800/60"
+                        : "bg-blue-950/40 text-blue-300 border-blue-800/60"
+                    }`}>
+                      {statusMsg}
+                    </p>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
-      )}
+      </Modal>
 
       {/* Cloud Recordings Queue Table */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+      <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black backdrop-blur-md shadow-sm dark:shadow-xl p-6 shadow-xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
               <Film className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
                 Class Cloud Recordings Queue
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1897,7 +1798,7 @@ export default function ZoomYouTubeDashboardPage() {
             <button
               onClick={handleTriggerCloudRunner}
               disabled={triggeringRunner}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg shadow-sm transition disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-white bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg shadow-sm transition disabled:opacity-50"
               title="Immediately triggers the GitHub Actions cloud runner to process all queued videos without waiting for scheduled times">
               {triggeringRunner ? (
                 <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
@@ -1910,7 +1811,7 @@ export default function ZoomYouTubeDashboardPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex flex-wrap items-center gap-2 border-b pb-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
           {["all", "queued", "discovered", "ready", "uploaded"].map((f) => {
             const count =
               f === "all"
@@ -1926,8 +1827,8 @@ export default function ZoomYouTubeDashboardPage() {
                 }}
                 className={`px-3 py-1 text-xs font-medium rounded-lg capitalize transition ${
                   active
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100"
+                    ? "bg-slate-900 text-white dark:bg-indigo-600 dark:text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
                 }`}>
                 {f} ({count})
               </button>
@@ -1937,17 +1838,17 @@ export default function ZoomYouTubeDashboardPage() {
 
         {/* Recordings Table */}
         {recordings.length === 0 ? (
-          <div className="text-center py-10 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+          <div className="text-center py-10 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-xl bg-slate-50/50 dark:bg-black">
             <Film className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-            <p className="text-sm font-medium text-slate-600">No recordings in queue yet</p>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No recordings in queue yet</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Click &quot;Sync from Zoom Now&quot; above to scan your recent classes from {zoomAccounts[0]?.accountName || "Zoom"}.
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider border-b">
+              <thead className="bg-slate-50 dark:bg-zinc-950 text-slate-600 dark:text-slate-400 font-semibold uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800">
                 <tr>
                   <th className="py-3 px-3">Topic / Class</th>
                   <th className="py-3 px-3">Date & Time</th>
@@ -1957,28 +1858,28 @@ export default function ZoomYouTubeDashboardPage() {
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-y dark:divide-slate-800/80">
                 {pagedRecordings
                   .map((rec) => {
                     const toMB = (bytes: number) =>
                       bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "-";
 
                     const badgeColors: Record<string, string> = {
-                      discovered: "bg-amber-50 text-amber-700 border-amber-200",
-                      queued: "bg-blue-50 text-blue-700 border-blue-200 font-bold",
-                      downloading: "bg-blue-50 text-blue-700 border-blue-200 animate-pulse",
-                      watermarking: "bg-purple-50 text-purple-700 border-purple-200",
-                      ready: "bg-cyan-50 text-cyan-700 border-cyan-200",
-                      uploading: "bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse",
-                      uploaded: "bg-emerald-50 text-emerald-700 border-emerald-200",
-                      skipped: "bg-slate-100 text-slate-500 border-slate-200",
-                      failed: "bg-rose-50 text-rose-700 border-rose-200",
+                      discovered: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60",
+                      queued: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60 font-bold",
+                      downloading: "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60 animate-pulse",
+                      watermarking: "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60",
+                      ready: "bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800/60",
+                      uploading: "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60 animate-pulse",
+                      uploaded: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60",
+                      skipped: "bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-zinc-800",
+                      failed: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60",
                     };
 
                     return (
-                      <tr key={rec.id} className="hover:bg-slate-50/70 transition">
+                      <tr key={rec.id} className="hover:bg-slate-50/70 dark:hover:bg-zinc-900/50 transition">
                         <td className="py-3 px-3">
-                          <div className="font-bold text-slate-900 max-w-xs truncate">
+                          <div className="font-bold text-slate-900 dark:text-white max-w-xs truncate">
                             {rec.topic}
                           </div>
                           {rec.accountName && (
@@ -1987,7 +1888,7 @@ export default function ZoomYouTubeDashboardPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                           {new Date(rec.recording_start).toLocaleString("en-US", {
                             month: "short",
                             day: "numeric",
@@ -1995,10 +1896,10 @@ export default function ZoomYouTubeDashboardPage() {
                             minute: "2-digit",
                           })}
                         </td>
-                        <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                           {rec.duration_minutes} min
                         </td>
-                        <td className="py-3 px-3 text-slate-600 whitespace-nowrap font-mono">
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap font-mono">
                           {toMB(rec.file_size_bytes)}
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
@@ -2070,13 +1971,13 @@ export default function ZoomYouTubeDashboardPage() {
                                   } catch {}
                                   router.push("/dashboard/studio");
                                 }}
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-2 py-1 rounded-md transition">
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 border border-slate-300 dark:border-zinc-800 px-2 py-1 rounded-md transition">
                                 <Sparkles className="w-3 h-3 text-amber-500" />
                                 Studio
                               </button>
                               <button
                                 onClick={() => handleUpdateRecordingStatus(rec.id, "skipped")}
-                                className="text-xs text-slate-400 hover:text-slate-600 transition">
+                                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition">
                                 Skip
                               </button>
                             </div>
@@ -2116,7 +2017,7 @@ export default function ZoomYouTubeDashboardPage() {
                           ) : rec.status === "skipped" ? (
                             <button
                               onClick={() => handleUpdateRecordingStatus(rec.id, "discovered")}
-                              className="text-xs text-slate-500 hover:text-slate-700 font-medium transition">
+                              className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-medium transition">
                               Unskip
                             </button>
                           ) : (
@@ -2182,7 +2083,6 @@ export default function ZoomYouTubeDashboardPage() {
           }
         }}
       />
-      </div>
 
       {/* Modern Floating Toast Notification Container */}
       <div className="fixed top-5 right-5 z-[100] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
