@@ -66,10 +66,56 @@ export function UploadQueueDrawer({
 }: UploadQueueDrawerProps) {
   const [mounted, setMounted] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [internalTriggering, setInternalTriggering] = useState<boolean>(false);
+  const [fallbackTarget, setFallbackTarget] = useState<"local" | "cloud">("cloud");
 
   useEffect(() => {
     setMounted(true);
+    try {
+      const saved = localStorage.getItem("zoomyt_processing_target");
+      if (saved === "local" || saved === "cloud") {
+        setFallbackTarget(saved);
+      }
+    } catch {}
   }, []);
+
+  const effectiveTarget = processingTarget || fallbackTarget;
+
+  const handleSetTarget = (target: "local" | "cloud") => {
+    if (setProcessingTarget) {
+      setProcessingTarget(target);
+    } else {
+      setFallbackTarget(target);
+    }
+    try {
+      localStorage.setItem("zoomyt_processing_target", target);
+    } catch {}
+  };
+
+  const handleTriggerRunner = async () => {
+    if (onTriggerCloudRunner) {
+      await onTriggerCloudRunner();
+      return;
+    }
+    setInternalTriggering(true);
+    try {
+      const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Manual batch trigger from Queue Drawer" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("GitHub Actions Cloud Runner dispatched successfully!");
+      } else {
+        alert(data.message || "Failed to dispatch GitHub Actions runner");
+      }
+    } catch (err) {
+      alert("Error dispatching runner: " + String(err));
+    } finally {
+      setInternalTriggering(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -155,14 +201,14 @@ export function UploadQueueDrawer({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {queuedCount > 0 && processingTarget === "cloud" && onTriggerCloudRunner ? (
+          {queuedCount > 0 && effectiveTarget === "cloud" ? (
             <button
               type="button"
-              onClick={() => onTriggerCloudRunner()}
-              disabled={isTriggeringRunner}
+              onClick={handleTriggerRunner}
+              disabled={isTriggeringRunner || internalTriggering}
               className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 border border-zinc-700 dark:border-zinc-300 px-2.5 py-1 rounded shadow-xs transition disabled:opacity-50"
               title="Run batch GitHub Actions runner now for all queued videos">
-              {isTriggeringRunner ? (
+              {isTriggeringRunner || internalTriggering ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <Cloud className="w-3 h-3" />
@@ -294,37 +340,35 @@ export function UploadQueueDrawer({
         )}
 
         {/* Processing Target preset */}
-        {processingTarget && setProcessingTarget && (
-          <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/70 dark:border-zinc-800">
-            <span className="font-medium text-slate-600 dark:text-zinc-400 text-[11px]">
-              Target Runner:
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setProcessingTarget("local")}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                  processingTarget === "local"
-                    ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
-                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
-                }`}>
-                <Laptop className="w-3.5 h-3.5" />
-                <span>Laptop</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProcessingTarget("cloud")}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
-                  processingTarget === "cloud"
-                    ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
-                    : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
-                }`}>
-                <Cloud className="w-3.5 h-3.5" />
-                <span>GitHub Workflow</span>
-              </button>
-            </div>
+        <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/70 dark:border-zinc-800">
+          <span className="font-medium text-slate-600 dark:text-zinc-400 text-[11px]">
+            Target Runner:
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleSetTarget("local")}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                effectiveTarget === "local"
+                  ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                  : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
+              }`}>
+              <Laptop className="w-3.5 h-3.5" />
+              <span>Laptop</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetTarget("cloud")}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition ${
+                effectiveTarget === "cloud"
+                  ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                  : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border border-slate-200 dark:border-zinc-800 hover:text-slate-900 dark:hover:text-white"
+              }`}>
+              <Cloud className="w-3.5 h-3.5" />
+              <span>GitHub Workflow</span>
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Drawer Items List */}

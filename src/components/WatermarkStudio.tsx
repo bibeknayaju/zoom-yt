@@ -25,6 +25,7 @@ import {
   Sparkles,
   Clock,
 } from "lucide-react";
+import { trackServerQueueItems } from "@/lib/upload-queue-store";
 
 export interface StudioRecording {
   fileId: string;
@@ -213,25 +214,26 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
   const handleAddToQueue = async () => {
     try {
       setEnqueuingCloud(true);
+      const recPayload = {
+        fileId,
+        topic: customTitle.trim() || recording.topic,
+        startTime: recording.startTime || recording.recording_start,
+        downloadUrl: recording.downloadUrl,
+        zoomAccountId: recording.zoomAccountId,
+        customTitle: customTitle.trim() || defaultTitle,
+        customDescription: customDescription.trim(),
+        privacyStatus,
+        fileSizeBytes: recording.fileSizeBytes || recording.file_size_bytes,
+        durationMinutes: recording.durationMinutes || recording.duration_minutes,
+      };
+
       const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recordings: [
-            {
-              fileId,
-              topic: customTitle.trim() || recording.topic,
-              startTime: recording.startTime || recording.recording_start,
-              downloadUrl: recording.downloadUrl,
-              zoomAccountId: recording.zoomAccountId,
-              customTitle: customTitle.trim() || defaultTitle,
-              customDescription: customDescription.trim(),
-              privacyStatus,
-              fileSizeBytes: recording.fileSizeBytes || recording.file_size_bytes,
-              durationMinutes: recording.durationMinutes || recording.duration_minutes,
-            },
-          ],
+          recordings: [recPayload],
           resolution: selectedResolution,
+          target: "cloud",
           watermark: {
             type: watermarkType,
             resolution: selectedResolution,
@@ -255,6 +257,7 @@ export function WatermarkStudio({ recording, onClose, onSuccess }: WatermarkStud
         throw new Error(data.error || "Failed to enqueue video");
       }
 
+      trackServerQueueItems([recPayload], "cloud", "queued");
       alert("Video successfully queued for Cloud Processing!\n\nThe GitHub Actions cloud runner will download, watermark, and upload it to YouTube.");
       onClose();
     } catch (err: unknown) {

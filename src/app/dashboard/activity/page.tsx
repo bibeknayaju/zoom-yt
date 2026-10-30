@@ -85,6 +85,47 @@ export default function ActivityLogsPage() {
     startDirectProcessing: handleStartDirectProcessing,
   } = useUploadQueue();
 
+  type ProcessingTarget = "local" | "cloud";
+  const [processingTarget, setProcessingTarget] = useState<ProcessingTarget>("cloud");
+  const [triggeringRunner, setTriggeringRunner] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("zoomyt_processing_target");
+      if (saved === "local" || saved === "cloud") {
+        setProcessingTarget(saved as ProcessingTarget);
+      }
+    } catch {}
+  }, []);
+
+  const handleSetProcessingTarget = (target: ProcessingTarget) => {
+    setProcessingTarget(target);
+    try {
+      localStorage.setItem("zoomyt_processing_target", target);
+    } catch {}
+  };
+
+  const handleTriggerCloudRunner = async () => {
+    setTriggeringRunner(true);
+    try {
+      const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Manual batch trigger from Activity page" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("GitHub Actions Cloud Runner dispatched successfully!");
+      } else {
+        alert(data.message || "Failed to dispatch runner");
+      }
+    } catch (err) {
+      alert("Error dispatching runner: " + String(err));
+    } finally {
+      setTriggeringRunner(false);
+    }
+  };
+
   // Fetch paginated logs
   const fetchLogs = useCallback(
     async (page = currentPage, limit = pageSize, status = statusFilter, search = searchQuery) => {
@@ -551,6 +592,10 @@ export default function ActivityLogsPage() {
         retryQueueItem={handleRetryQueueItem}
         removeFromQueue={handleRemoveFromQueue}
         startDirectProcessing={handleStartDirectProcessing}
+        onTriggerCloudRunner={handleTriggerCloudRunner}
+        isTriggeringRunner={triggeringRunner}
+        processingTarget={processingTarget}
+        setProcessingTarget={handleSetProcessingTarget}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
         currentWatermarkPreset={currentWatermarkPreset}

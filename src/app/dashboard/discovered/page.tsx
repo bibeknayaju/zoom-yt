@@ -23,11 +23,14 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  Laptop,
+  Cloud,
 } from "lucide-react";
 import {
   useUploadQueue,
   DirectUploadQueueItem,
   buildWatermarkConfig,
+  trackServerQueueItems,
 } from "@/lib/upload-queue-store";
 
 interface RecordingItem {
@@ -42,6 +45,7 @@ interface RecordingItem {
   download_url?: string;
   status:
     | "discovered"
+    | "queued"
     | "downloading"
     | "watermarking"
     | "ready"
@@ -59,6 +63,7 @@ interface RecordingItem {
 
 const STATUS_BADGE_STYLES: Record<string, { bg: string; text: string; border: string; animate?: boolean }> = {
   discovered: { bg: "bg-slate-100 dark:bg-zinc-900", text: "text-slate-700 dark:text-zinc-300", border: "border-slate-200 dark:border-zinc-800" },
+  queued: { bg: "bg-amber-50 dark:bg-amber-950/40", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-900/50" },
   ready: { bg: "bg-slate-100 dark:bg-zinc-900", text: "text-slate-700 dark:text-zinc-300", border: "border-slate-200 dark:border-zinc-800" },
   downloading: { bg: "bg-blue-50 dark:bg-blue-950/40", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-900/50", animate: true },
   watermarking: { bg: "bg-blue-50 dark:bg-blue-950/40", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-900/50", animate: true },
@@ -86,6 +91,31 @@ export default function DiscoveredVideosPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [syncing, setSyncing] = useState<boolean>(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  // Runner & Processing target state
+  type ProcessingTarget = "local" | "cloud";
+  const [processingTarget, setProcessingTarget] = useState<ProcessingTarget>("cloud");
+  const [triggeringRunner, setTriggeringRunner] = useState<boolean>(false);
+  const [enqueuingIds, setEnqueuingIds] = useState<Record<string, boolean>>({});
+  const [enqueuingAll, setEnqueuingAll] = useState<boolean>(false);
+  const [runnerMsg, setRunnerMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Load saved processing target from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("zoomyt_processing_target");
+      if (saved === "local" || saved === "cloud") {
+        setProcessingTarget(saved as ProcessingTarget);
+      }
+    } catch {}
+  }, []);
+
+  const handleSetProcessingTarget = (target: ProcessingTarget) => {
+    setProcessingTarget(target);
+    try {
+      localStorage.setItem("zoomyt_processing_target", target);
+    } catch {}
+  };
 
   // Selection for bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -138,6 +168,81 @@ export default function DiscoveredVideosPage() {
   useEffect(() => {
     fetchRecordings(currentPage, pageSize, statusFilter, searchQuery);
   }, [currentPage, pageSize, statusFilter, searchQuery, fetchRecordings]);
+
+  // Background polling when any recording is actively queued or processing
+  const isAnyJobActive = useMemo(() => {
+    return (
+      recordings.some((r) =>
+        ["queued", "downloading", "watermarking", "uploading"].includes(r.status)
+      ) ||
+      uploadQueue.some((q) =>
+        ["queued", "uploading"].includes(q.status)
+      )
+    );
+  }, [recordings, uploadQueue]);
+
+  useEffect(() => {
+    if (!isAnyJobActive) return;
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchRecordings(currentPage, pageSize, statusFilter, searchQuery);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isAnyJobActive, fetchRecordings, currentPage, pageSize, statusFilter, searchQuery]);
+
+  // Trigger GitHub Actions Cloud Runner
+  const handleTriggerCloudRunner = async () => {
+    setTriggeringRunner(true);
+    setRunnerMsg(null);
+    try {
+      const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Manual batch trigger from Discovered Videos page" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRunnerMsg({
+          type: "success",
+          text: "Cloud Runner Dispatched! GitHub Actions runner is processing queued videos.",
+        });
+        fetchRecordings(currentPage, pageSize, statusFilter, searchQuery);
+      } else {
+        setRunnerMsg({
+          type: "error",
+          text: data.message || "Failed to dispatch GitHub Actions runner.",
+        });
+      }
+    } catch (err: unknown) {
+      setRunnerMsg({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to trigger workflow",
+      });
+    } finally {
+      setTriggeringRunner(false);
+      setTimeout(() => setRunnerMsg(null), 6000);
+    }
+  };
+
+  // Cancel / unqueue recording
+  const handleCancelQueuedRecording = async (fileId: string) => {
+    try {
+      await fetch("/api/zoom-youtube/recordings/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
+      setRecordings((prev) =>
+        prev.map((r) =>
+          ((r.zoom_file_id || r.id) === fileId ? { ...r, status: "discovered" } : r)
+        )
+      );
+      handleRemoveFromQueue(fileId);
+    } catch (err) {
+      console.error("Failed to cancel queued recording:", err);
+    }
+  };
 
   // Sync recordings from Zoom Cloud
   const handleSyncNow = async () => {
@@ -201,25 +306,76 @@ export default function DiscoveredVideosPage() {
   };
 
   // Direct upload item
-  const handleDirectUploadItem = (rec: RecordingItem) => {
+  const handleDirectUploadItem = async (rec: RecordingItem) => {
+    const fileId = rec.zoom_file_id || rec.id;
+    setEnqueuingIds((prev) => ({ ...prev, [fileId]: true }));
     const wm = buildWatermarkConfig(currentWatermarkPreset);
-    handleQueueDirectUpload(
-      {
-        fileId: rec.zoom_file_id || rec.id,
-        topic: rec.topic,
-        downloadUrl: rec.download_url,
-        zoomAccountId: rec.zoom_account_id,
-        startTime: rec.recording_start,
-        fileSizeBytes: rec.file_size_bytes,
-        durationMinutes: rec.duration_minutes,
-      },
-      rec.accountName || "Zoom Account",
-      {
-        watermark: wm,
-        resolution: wm.type === "none" ? "original" : currentResolution,
+    const formattedRec = {
+      fileId,
+      topic: rec.topic,
+      downloadUrl: rec.download_url,
+      zoomAccountId: rec.zoom_account_id,
+      startTime: rec.recording_start,
+      fileSizeBytes: rec.file_size_bytes,
+      durationMinutes: rec.duration_minutes,
+      accountName: rec.accountName || "Zoom Account",
+    };
+
+    try {
+      if (processingTarget === "cloud") {
+        // Enqueue to server for GitHub Actions Cloud Runner
+        const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: [formattedRec],
+            watermark: wm,
+            resolution: wm.type === "none" ? "original" : currentResolution,
+            target: "cloud",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to enqueue video for Cloud Runner");
+        }
+
+        // Add to server-managed queue drawer without starting local browser processing
+        trackServerQueueItems([formattedRec], "cloud", "queued");
+        setRecordings((prev) =>
+          prev.map((r) => ((r.zoom_file_id || r.id) === fileId ? { ...r, status: "queued" } : r))
+        );
+        setQueueDrawerOpen(true);
+      } else {
+        // Local laptop: Post to enqueue API with target: "local" and process in browser worker
+        await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: [formattedRec],
+            watermark: wm,
+            resolution: wm.type === "none" ? "original" : currentResolution,
+            target: "local",
+          }),
+        }).catch(() => {});
+
+        handleQueueDirectUpload(
+          formattedRec,
+          rec.accountName || "Zoom Account",
+          {
+            watermark: wm,
+            resolution: wm.type === "none" ? "original" : currentResolution,
+          }
+        );
+        setRecordings((prev) =>
+          prev.map((r) => ((r.zoom_file_id || r.id) === fileId ? { ...r, status: "queued" } : r))
+        );
+        setQueueDrawerOpen(true);
       }
-    );
-    setQueueDrawerOpen(true);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to queue video");
+    } finally {
+      setEnqueuingIds((prev) => ({ ...prev, [fileId]: false }));
+    }
   };
 
   // Bulk actions
@@ -240,9 +396,10 @@ export default function DiscoveredVideosPage() {
     });
   };
 
-  const handleBulkUploadSelected = () => {
+  const handleBulkUploadSelected = async () => {
     const selected = recordings.filter((r) => selectedIds.has(r.id));
     if (selected.length === 0) return;
+    setEnqueuingAll(true);
     const wm = buildWatermarkConfig(currentWatermarkPreset);
     const formatted = selected.map((r) => ({
       fileId: r.zoom_file_id || r.id,
@@ -252,13 +409,60 @@ export default function DiscoveredVideosPage() {
       startTime: r.recording_start,
       fileSizeBytes: r.file_size_bytes,
       durationMinutes: r.duration_minutes,
+      accountName: r.accountName || "Zoom Account",
     }));
-    handleQueueAllDirectUpload(formatted, "Bulk Discovered", {
-      watermark: wm,
-      resolution: wm.type === "none" ? "original" : currentResolution,
-    });
-    setQueueDrawerOpen(true);
-    setSelectedIds(new Set());
+    const enqueuedIds = new Set(formatted.map((r) => r.fileId));
+
+    try {
+      if (processingTarget === "cloud") {
+        const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: formatted,
+            watermark: wm,
+            resolution: wm.type === "none" ? "original" : currentResolution,
+            target: "cloud",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to enqueue videos for Cloud Runner");
+        }
+
+        trackServerQueueItems(formatted, "cloud", "queued");
+        setRecordings((prev) =>
+          prev.map((r) => (enqueuedIds.has(r.zoom_file_id || r.id) ? { ...r, status: "queued" } : r))
+        );
+        setSelectedIds(new Set());
+        setQueueDrawerOpen(true);
+      } else {
+        await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: formatted,
+            watermark: wm,
+            resolution: wm.type === "none" ? "original" : currentResolution,
+            target: "local",
+          }),
+        }).catch(() => {});
+
+        handleQueueAllDirectUpload(formatted, "Bulk Discovered", {
+          watermark: wm,
+          resolution: wm.type === "none" ? "original" : currentResolution,
+        });
+        setRecordings((prev) =>
+          prev.map((r) => (enqueuedIds.has(r.zoom_file_id || r.id) ? { ...r, status: "queued" } : r))
+        );
+        setSelectedIds(new Set());
+        setQueueDrawerOpen(true);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to bulk queue videos");
+    } finally {
+      setEnqueuingAll(false);
+    }
   };
 
   const toMB = (bytes: number) => (bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "—");
@@ -287,6 +491,49 @@ export default function DiscoveredVideosPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Target Switcher */}
+            <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xs">
+              <button
+                type="button"
+                onClick={() => handleSetProcessingTarget("local")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  processingTarget === "local"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}>
+                <Laptop className="w-3.5 h-3.5" />
+                <span>Local Laptop</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetProcessingTarget("cloud")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  processingTarget === "cloud"
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}>
+                <Cloud className="w-3.5 h-3.5" />
+                <span>GitHub Workflow</span>
+              </button>
+            </div>
+
+            {/* Run Cloud Runner Button (when cloud target is selected) */}
+            {processingTarget === "cloud" && (
+              <button
+                type="button"
+                onClick={handleTriggerCloudRunner}
+                disabled={triggeringRunner}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50"
+                title="Dispatch GitHub Actions cloud runner to process all queued videos">
+                {triggeringRunner ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Cloud className="w-3.5 h-3.5" />
+                )}
+                <span>{triggeringRunner ? "Dispatching..." : "Run Cloud Runner"}</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleSyncNow}
@@ -309,6 +556,30 @@ export default function DiscoveredVideosPage() {
             </button>
           </div>
         </div>
+
+        {/* Runner Dispatch Feedback alert */}
+        {runnerMsg && (
+          <div
+            className={`p-3 rounded-xl border text-xs flex items-center justify-between animate-in fade-in ${
+              runnerMsg.type === "success"
+                ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300"
+                : "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-300"
+            }`}>
+            <div className="flex items-center gap-2">
+              {runnerMsg.type === "success" ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              )}
+              <span>{runnerMsg.text}</span>
+            </div>
+            <button
+              onClick={() => setRunnerMsg(null)}
+              className="text-slate-400 hover:text-slate-700 dark:hover:text-white font-bold ml-2">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Sync message alert */}
         {syncMsg && (
@@ -360,6 +631,7 @@ export default function DiscoveredVideosPage() {
               {[
                 { id: "all", label: "All" },
                 { id: "discovered", label: "Discovered" },
+                { id: "queued", label: "Queued" },
                 { id: "ready", label: "Ready" },
                 { id: "uploading", label: "Uploading" },
                 { id: "uploaded", label: "Uploaded" },
@@ -397,9 +669,20 @@ export default function DiscoveredVideosPage() {
                 <button
                   type="button"
                   onClick={handleBulkUploadSelected}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg font-semibold shadow-xs transition">
-                  <Youtube className="w-3.5 h-3.5 text-red-500" />
-                  <span>Queue Selected ({selectedIds.size})</span>
+                  disabled={enqueuingAll}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-900 rounded-lg font-semibold shadow-xs transition disabled:opacity-50">
+                  {enqueuingAll ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : processingTarget === "cloud" ? (
+                    <Cloud className="w-3.5 h-3.5" />
+                  ) : (
+                    <Laptop className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {processingTarget === "cloud"
+                      ? `Queue Selected for Cloud (${selectedIds.size})`
+                      : `Start Selected on Laptop (${selectedIds.size})`}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -557,10 +840,24 @@ export default function DiscoveredVideosPage() {
                               <span>Watch on YT</span>
                               <ExternalLink className="w-3 h-3 text-red-500 dark:text-red-400" />
                             </a>
-                          ) : queueItem ? (
+                          ) : queueItem && queueItem.status === "uploading" ? (
                             <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800">
                               <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 dark:text-blue-400" />
-                              <span>In Queue ({queueItem.progressPercent || 0}%)</span>
+                              <span>Uploading ({queueItem.progressPercent || 0}%)</span>
+                            </div>
+                          ) : rec.status === "queued" || (queueItem && queueItem.status === "queued") ? (
+                            <div className="inline-flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 dark:text-zinc-300 bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-2.5 py-1 rounded-lg">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>Queued ({processingTarget === "local" ? "Laptop" : "Cloud"})</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCancelQueuedRecording(rec.zoom_file_id || rec.id)}
+                                className="text-xs text-rose-600 hover:text-rose-800 dark:text-rose-400 font-medium transition"
+                                title="Cancel and unqueue">
+                                Cancel
+                              </button>
                             </div>
                           ) : (
                             <div className="inline-flex items-center gap-2">
@@ -574,14 +871,21 @@ export default function DiscoveredVideosPage() {
                                 <span>Studio</span>
                               </button>
 
-                              {/* Direct Upload */}
+                              {/* Direct Upload / Queue Button */}
                               <button
                                 type="button"
                                 onClick={() => handleDirectUploadItem(rec)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg shadow-xs transition"
-                                title="Direct Upload to YouTube">
-                                <Youtube className="w-3.5 h-3.5 text-red-500" />
-                                <span>Upload</span>
+                                disabled={enqueuingIds[rec.zoom_file_id || rec.id]}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg shadow-xs transition disabled:opacity-50"
+                                title={processingTarget === "cloud" ? "Queue video for GitHub Actions cloud runner" : "Process and stream directly on this laptop"}>
+                                {enqueuingIds[rec.zoom_file_id || rec.id] ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : processingTarget === "cloud" ? (
+                                  <Cloud className="w-3.5 h-3.5" />
+                                ) : (
+                                  <Laptop className="w-3.5 h-3.5" />
+                                )}
+                                <span>{processingTarget === "cloud" ? "Queue Cloud" : "Upload"}</span>
                               </button>
 
                               {/* Ready / Unready toggle */}
@@ -648,6 +952,10 @@ export default function DiscoveredVideosPage() {
         retryQueueItem={handleRetryQueueItem}
         removeFromQueue={handleRemoveFromQueue}
         startDirectProcessing={handleStartDirectProcessing}
+        onTriggerCloudRunner={handleTriggerCloudRunner}
+        isTriggeringRunner={triggeringRunner}
+        processingTarget={processingTarget}
+        setProcessingTarget={handleSetProcessingTarget}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
         currentWatermarkPreset={currentWatermarkPreset}

@@ -13,10 +13,16 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  Laptop,
+  Cloud,
 } from "lucide-react";
 import { Youtube } from "@/components/icons/Youtube";
 import Link from "next/link";
-import { useUploadQueue } from "@/lib/upload-queue-store";
+import {
+  useUploadQueue,
+  trackServerQueueItems,
+  buildWatermarkConfig,
+} from "@/lib/upload-queue-store";
 import { UploadQueueDrawer } from "@/components/UploadQueueDrawer";
 
 function StudioContent() {
@@ -34,6 +40,8 @@ function StudioContent() {
     setDrawerOpen,
     currentResolution,
     setQueueResolution,
+    currentWatermarkPreset,
+    setQueueWatermarkPreset,
     addToQueue,
     addAllToQueue,
     removeFromQueue,
@@ -41,6 +49,159 @@ function StudioContent() {
     clearCompleted,
     startDirectProcessing,
   } = useUploadQueue();
+
+  // Processing target & runner state
+  type ProcessingTarget = "local" | "cloud";
+  const [processingTarget, setProcessingTarget] = useState<ProcessingTarget>("cloud");
+  const [triggeringRunner, setTriggeringRunner] = useState<boolean>(false);
+  const [enqueuingIds, setEnqueuingIds] = useState<Record<string, boolean>>({});
+  const [enqueuingAll, setEnqueuingAll] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("zoomyt_processing_target");
+      if (saved === "local" || saved === "cloud") {
+        setProcessingTarget(saved as ProcessingTarget);
+      }
+    } catch {}
+  }, []);
+
+  const handleSetProcessingTarget = (target: ProcessingTarget) => {
+    setProcessingTarget(target);
+    try {
+      localStorage.setItem("zoomyt_processing_target", target);
+    } catch {}
+  };
+
+  const handleTriggerCloudRunner = async () => {
+    setTriggeringRunner(true);
+    try {
+      const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Manual batch trigger from Studio page" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("GitHub Actions Cloud Runner dispatched successfully!");
+        loadRecordings();
+      } else {
+        alert(data.message || "Failed to dispatch runner");
+      }
+    } catch (err) {
+      alert("Error dispatching runner: " + String(err));
+    } finally {
+      setTriggeringRunner(false);
+    }
+  };
+
+  const handleUploadItem = async (rec: any) => {
+    const fileId = rec.zoom_file_id || rec.fileId || rec.id;
+    setEnqueuingIds((prev) => ({ ...prev, [fileId]: true }));
+    const formattedRec = {
+      fileId,
+      topic: rec.topic,
+      downloadUrl: rec.download_url || rec.downloadUrl,
+      zoomAccountId: rec.zoom_account_id || rec.zoomAccountId,
+      startTime: rec.recording_start || rec.startTime,
+      durationMinutes: rec.duration_minutes || rec.durationMinutes,
+      fileSizeBytes: rec.file_size_bytes || rec.fileSizeBytes,
+      accountName: rec.accountName || "Zoom Account",
+    };
+
+    try {
+      if (processingTarget === "cloud") {
+        const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: [formattedRec],
+            resolution: currentResolution,
+            watermark: buildWatermarkConfig(currentWatermarkPreset),
+            target: "cloud",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to enqueue video for Cloud Runner");
+        }
+        trackServerQueueItems([formattedRec], "cloud", "queued");
+        setDrawerOpen(true);
+      } else {
+        await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: [formattedRec],
+            resolution: currentResolution,
+            watermark: buildWatermarkConfig(currentWatermarkPreset),
+            target: "local",
+          }),
+        }).catch(() => {});
+
+        addToQueue(formattedRec, formattedRec.accountName);
+        setDrawerOpen(true);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to queue video");
+    } finally {
+      setEnqueuingIds((prev) => ({ ...prev, [fileId]: false }));
+    }
+  };
+
+  const handleUploadAll = async () => {
+    if (recordings.length === 0) return;
+    setEnqueuingAll(true);
+    const formattedList = recordings.map((rec) => ({
+      fileId: rec.zoom_file_id || rec.fileId || rec.id,
+      topic: rec.topic,
+      downloadUrl: rec.download_url || rec.downloadUrl,
+      zoomAccountId: rec.zoom_account_id || rec.zoomAccountId,
+      startTime: rec.recording_start || rec.startTime,
+      durationMinutes: rec.duration_minutes || rec.durationMinutes,
+      fileSizeBytes: rec.file_size_bytes || rec.fileSizeBytes,
+      accountName: rec.accountName || "Zoom Account",
+    }));
+
+    try {
+      if (processingTarget === "cloud") {
+        const res = await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: formattedList,
+            resolution: currentResolution,
+            watermark: buildWatermarkConfig(currentWatermarkPreset),
+            target: "cloud",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to enqueue all recordings for Cloud Runner");
+        }
+        trackServerQueueItems(formattedList, "cloud", "queued");
+        setDrawerOpen(true);
+      } else {
+        await fetch("/api/zoom-youtube/recordings/enqueue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordings: formattedList,
+            resolution: currentResolution,
+            watermark: buildWatermarkConfig(currentWatermarkPreset),
+            target: "local",
+          }),
+        }).catch(() => {});
+
+        addAllToQueue(recordings, "Recorded Queue");
+        setDrawerOpen(true);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to queue all recordings");
+    } finally {
+      setEnqueuingAll(false);
+    }
+  };
 
   const loadRecordings = () => {
     setLoading(true);
@@ -102,7 +263,7 @@ function StudioContent() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-5 gap-4">
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard"
@@ -118,6 +279,49 @@ function StudioContent() {
               Step 1: Customize and render watermark &bull; Step 2: Upload to YouTube &amp; auto-clean disk.
             </p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-slate-100 dark:bg-zinc-900 p-1 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <button
+              type="button"
+              onClick={() => handleSetProcessingTarget("local")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                processingTarget === "local"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}>
+              <Laptop className="w-3.5 h-3.5" />
+              <span>Laptop</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetProcessingTarget("cloud")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                processingTarget === "cloud"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}>
+              <Cloud className="w-3.5 h-3.5" />
+              <span>GitHub Workflow</span>
+            </button>
+          </div>
+
+          {processingTarget === "cloud" && (
+            <button
+              type="button"
+              onClick={handleTriggerCloudRunner}
+              disabled={triggeringRunner}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50"
+              title="Dispatch GitHub Actions cloud runner">
+              {triggeringRunner ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Cloud className="w-3.5 h-3.5" />
+              )}
+              <span>{triggeringRunner ? "Dispatching..." : "Run Cloud Runner"}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -162,10 +366,21 @@ function StudioContent() {
                   ))}
                 </div>
                 <button
-                  onClick={() => addAllToQueue(recordings, "Recorded Queue")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 rounded-lg shadow-xs transition">
-                  <Youtube className="w-3.5 h-3.5 text-red-500" />
-                  <span>Direct Upload All ({recordings.length}) to YT</span>
+                  onClick={handleUploadAll}
+                  disabled={enqueuingAll}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-white dark:text-zinc-900 rounded-lg shadow-xs transition disabled:opacity-50">
+                  {enqueuingAll ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : processingTarget === "cloud" ? (
+                    <Cloud className="w-3.5 h-3.5" />
+                  ) : (
+                    <Youtube className="w-3.5 h-3.5 text-red-500" />
+                  )}
+                  <span>
+                    {processingTarget === "cloud"
+                      ? `Queue All for Cloud (${recordings.length})`
+                      : `Direct Upload All (${recordings.length}) to YT`}
+                  </span>
                 </button>
               </div>
             )}
@@ -270,23 +485,17 @@ function StudioContent() {
                         )
                       ) : (
                         <button
-                          onClick={() =>
-                            addToQueue(
-                              {
-                                fileId: recFileId,
-                                topic: rec.topic,
-                                downloadUrl: rec.download_url || rec.downloadUrl,
-                                zoomAccountId: rec.zoom_account_id || rec.zoomAccountId,
-                                startTime: rec.recording_start || rec.startTime,
-                                durationMinutes: rec.duration_minutes || rec.durationMinutes,
-                                fileSizeBytes: rec.file_size_bytes || rec.fileSizeBytes,
-                              },
-                              "Recording Queue"
-                            )
-                          }
-                          className="w-full py-2 px-3 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg transition shadow-xs flex items-center justify-center gap-1.5">
-                          <Youtube className="w-3.5 h-3.5 text-red-300" />
-                          <span>Direct Upload to YT</span>
+                          onClick={() => handleUploadItem(rec)}
+                          disabled={enqueuingIds[recFileId]}
+                          className="w-full py-2 px-3 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg transition shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50">
+                          {enqueuingIds[recFileId] ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : processingTarget === "cloud" ? (
+                            <Cloud className="w-3.5 h-3.5" />
+                          ) : (
+                            <Youtube className="w-3.5 h-3.5 text-red-300" />
+                          )}
+                          <span>{processingTarget === "cloud" ? "Queue for Cloud" : "Direct Upload to YT"}</span>
                         </button>
                       )}
 
@@ -327,8 +536,14 @@ function StudioContent() {
         retryQueueItem={retryQueueItem}
         removeFromQueue={removeFromQueue}
         startDirectProcessing={startDirectProcessing}
+        onTriggerCloudRunner={handleTriggerCloudRunner}
+        isTriggeringRunner={triggeringRunner}
+        processingTarget={processingTarget}
+        setProcessingTarget={handleSetProcessingTarget}
         currentResolution={currentResolution}
         setQueueResolution={setQueueResolution}
+        currentWatermarkPreset={currentWatermarkPreset}
+        setQueueWatermarkPreset={setQueueWatermarkPreset}
       />
     </div>
   );
