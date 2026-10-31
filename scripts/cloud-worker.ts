@@ -18,6 +18,8 @@ import { decryptToken } from "../src/lib/crypto";
 import { getZoomS2SToken } from "../src/lib/zoom-s2s";
 import { processRecordingEndToEnd } from "../src/lib/pipeline";
 import { recordHeartbeat } from "../src/lib/zoomyt-store";
+import { runAutopilotDiscovery } from "../src/lib/autopilot";
+import { sendDiscordVideoSuccess, sendDiscordVideoFailure } from "../src/lib/discord";
 
 // 1. Ensure Environment Variables are Loaded in Standalone Node Runtime
 if (typeof process.loadEnvFile === "function") {
@@ -114,6 +116,18 @@ async function runBatch() {
   let processedCount = 0;
   let successCount = 0;
   let failCount = 0;
+
+  // 0. Auto-Pilot Discovery: automatically scan all active Zoom accounts for today's classes
+  try {
+    const discovery = await runAutopilotDiscovery(supabase);
+    if (discovery.newlyQueuedCount > 0) {
+      console.log(`\n🚀 [Auto-Pilot] Automatically discovered & queued ${discovery.newlyQueuedCount} new class(es) for today (${discovery.scanDateNepal} NPT).`);
+    } else {
+      console.log(`\nℹ️ [Auto-Pilot] Today's scan complete (${discovery.scanDateNepal} NPT): ${discovery.alreadyUploadedCount} already uploaded/active, 0 new un-uploaded classes.`);
+    }
+  } catch (discErr) {
+    console.warn(`⚠️ [Auto-Pilot] Notice during discovery scan:`, discErr);
+  }
 
   try {
     while (true) {
@@ -311,9 +325,41 @@ async function runBatch() {
               updated_at: new Date().toISOString(),
             })
             .eq("id", job.id);
+
+          // Dispatch Discord Success Notification per video
+          try {
+            await sendDiscordVideoSuccess({
+              topic: job.topic,
+              hostName: zoomAccount.account_name,
+              accountName: zoomAccount.account_name,
+              durationMinutes: job.duration_minutes,
+              fileSizeBytes: job.file_size_bytes,
+              startTime: job.recording_start,
+              youtubeUrl: result.youtubeUrl!,
+              youtubeVideoId: result.youtubeVideoId,
+              resolution: watermarkOpts.resolution,
+            });
+            console.log(`📢 [Discord] Successfully dispatched live notification to Discord channel.`);
+          } catch (discordErr) {
+            console.warn(`⚠️ [Discord] Webhook notification warning:`, discordErr);
+          }
         } else {
           console.error(`❌ [Task ${processedCount}] FAILED: ${result.error}`);
           failCount++;
+
+          // Dispatch Discord Failure Notification
+          try {
+            await sendDiscordVideoFailure({
+              topic: job.topic,
+              hostName: zoomAccount.account_name,
+              accountName: zoomAccount.account_name,
+              startTime: job.recording_start,
+              fileId: job.zoom_file_id,
+              error: result.error || "Watermarking or upload failed",
+            });
+          } catch (discordErr) {
+            console.warn(`⚠️ [Discord] Webhook error notification warning:`, discordErr);
+          }
         }
       } catch (taskErr: unknown) {
         const msg = taskErr instanceof Error ? taskErr.message : String(taskErr);
@@ -329,6 +375,18 @@ async function runBatch() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", job.id);
+
+        // Dispatch Discord Failure Notification
+        try {
+          await sendDiscordVideoFailure({
+            topic: job.topic,
+            hostName: "Union Education",
+            accountName: "Zoom",
+            startTime: job.recording_start,
+            fileId: job.zoom_file_id,
+            error: msg,
+          });
+        } catch {}
       } finally {
         stopCancelWatch();
 

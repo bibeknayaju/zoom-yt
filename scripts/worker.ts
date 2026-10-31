@@ -20,6 +20,7 @@ import { decryptToken } from "../src/lib/crypto";
 import { getZoomS2SToken } from "../src/lib/zoom-s2s";
 import { processRecordingEndToEnd, registerActiveTask, unregisterActiveTask } from "../src/lib/pipeline";
 import { recordHeartbeat } from "../src/lib/zoomyt-store";
+import { sendDiscordVideoSuccess, sendDiscordVideoFailure } from "../src/lib/discord";
 
 // 1. Ensure Environment Variables are Loaded in Standalone Node Runtime
 if (typeof process.loadEnvFile === "function") {
@@ -318,12 +319,43 @@ async function pollAndExecute() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", job.id);
+
+        // Dispatch Discord notification
+        try {
+          await sendDiscordVideoSuccess({
+            topic: job.topic,
+            hostName: zoomAccount.account_name,
+            accountName: zoomAccount.account_name,
+            durationMinutes: job.duration_minutes,
+            fileSizeBytes: job.file_size_bytes,
+            startTime: job.recording_start,
+            youtubeUrl: result.youtubeUrl!,
+            youtubeVideoId: result.youtubeVideoId,
+            resolution: watermarkOpts.resolution,
+          });
+        } catch {}
       } else {
         console.error(`❌ [Worker] FAILED: ${result.error}`);
+        try {
+          await sendDiscordVideoFailure({
+            topic: job.topic,
+            hostName: zoomAccount.account_name,
+            accountName: zoomAccount.account_name,
+            startTime: job.recording_start,
+            fileId: job.zoom_file_id,
+            error: result.error || "Processing failed",
+          });
+        } catch {}
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\n❌ [Worker] Error processing job: ${msg}`);
+      try {
+        await sendDiscordVideoFailure({
+          topic: "Unknown Task",
+          error: msg,
+        });
+      } catch {}
     } finally {
       if (stopCancelWatch) stopCancelWatch();
       isJobActive = false;

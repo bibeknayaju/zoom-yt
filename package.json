@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "worker": "tsx scripts/worker.ts",
-    "worker:cloud": "tsx scripts/cloud-worker.ts"
+    "worker:cloud": "tsx scripts/cloud-worker.ts",
+    "autopilot": "tsx scripts/cloud-worker.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.9.13",

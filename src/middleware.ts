@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/api/webhooks(.*)",
+  "/api/zoom-youtube/autopilot(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

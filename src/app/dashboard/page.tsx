@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Youtube } from "@/components/icons/Youtube";
 import { useUser } from "@clerk/nextjs";
+import { AutopilotControlCard } from "@/components/AutopilotControlCard";
 import { AutoWatermarkTemplateModal } from "@/components/AutoWatermarkTemplateModal";
 import { WatermarkStudio } from "@/components/WatermarkStudio";
 import { useUploadQueue, DirectUploadQueueItem, buildWatermarkConfig, trackServerQueueItems, syncServerQueueStatuses, syncServerQueueFromActivity } from "@/lib/upload-queue-store";
@@ -883,6 +884,9 @@ export default function ZoomYouTubeDashboardPage() {
             </button>
           </div>
         </div>
+
+      {/* Auto-Pilot Scheduled Publishing Control Center */}
+      <AutopilotControlCard />
 
       {/* Critical / Warning Storage Banner (Only shown if local processing is selected, device is online, and not dismissed) */}
       {storageWarnings.length > 0 && (
