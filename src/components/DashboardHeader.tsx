@@ -10,6 +10,7 @@ import {
   Video,
   History,
   Sliders,
+  Palette,
   Shield,
   ChevronRight,
   Menu,
@@ -47,6 +48,11 @@ const ROUTE_CONFIG: Record<string, RouteMeta> = {
     title: "Activity Logs",
     icon: History,
     description: "Historical runs, errors & YouTube links",
+  },
+  "/dashboard/thumbnails": {
+    title: "Thumbnail Studio",
+    icon: Palette,
+    description: "Multi-template YouTube title card & teacher generator",
   },
   "/dashboard/studio": {
     title: "Watermark Studio",

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
-import { Film, Sliders, Shield, Layers, UploadCloud, ListVideo, History, Video } from "lucide-react";
+import { Film, Sliders, Shield, Layers, UploadCloud, ListVideo, History, Video, Palette } from "lucide-react";
 import { useUploadQueue } from "@/lib/upload-queue-store";
 
 interface NavbarProps {
@@ -22,6 +22,7 @@ export function Navbar({ userRole = "user", userEmail, onOpenQueue }: NavbarProp
     { href: "/dashboard/discovered", label: "Discovered Videos", icon: ListVideo },
     { href: "/dashboard/zoom-accounts", label: "Zoom Accounts", icon: Video },
     { href: "/dashboard/activity", label: "Activity Logs", icon: History },
+    { href: "/dashboard/thumbnails", label: "Thumbnail Studio", icon: Palette },
     { href: "/dashboard/studio", label: "Watermark Studio", icon: Sliders },
     ...(userRole === "admin"
       ? [{ href: "/dashboard/admin", label: "Admin Settings", icon: Shield }]

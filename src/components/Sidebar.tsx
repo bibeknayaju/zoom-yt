@@ -10,6 +10,7 @@ import {
   Video,
   History,
   Sliders,
+  Palette,
   Shield,
   UploadCloud,
   CheckCircle2,
@@ -41,6 +42,7 @@ export function Sidebar({ onOpenQueue }: SidebarProps) {
     { href: "/dashboard/discovered", label: "Discovered Videos", icon: ListVideo },
     { href: "/dashboard/zoom-accounts", label: "Zoom Accounts", icon: Video },
     { href: "/dashboard/activity", label: "Activity Logs", icon: History },
+    { href: "/dashboard/thumbnails", label: "Thumbnail Studio", icon: Palette },
     { href: "/dashboard/studio", label: "Watermark Studio", icon: Sliders },
     ...(userRole === "admin"
       ? [{ href: "/dashboard/admin", label: "Admin Settings", icon: Shield }]

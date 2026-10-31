@@ -25,7 +25,19 @@ import {
   Check,
   ChevronRight,
   Cloud,
+  Users,
 } from "lucide-react";
+
+interface TeacherItem {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+interface SubjectConfigItem {
+  teachers: TeacherItem[];
+  currentTopic: string;
+}
 
 interface ZoomAccount {
   id: string;
@@ -76,7 +88,9 @@ export default function ZoomAccountsPage() {
 
   // Test connection state
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>(
+    {},
+  );
 
   // Add Account Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -106,32 +120,188 @@ export default function ZoomAccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Browse Cloud Recordings Modal State
-  const [browsingAccount, setBrowsingAccount] = useState<ZoomAccount | null>(null);
-  const [browsedRecordings, setBrowsedRecordings] = useState<BrowsedRecording[]>([]);
+  const [browsingAccount, setBrowsingAccount] = useState<ZoomAccount | null>(
+    null,
+  );
+  const [browsedRecordings, setBrowsedRecordings] = useState<
+    BrowsedRecording[]
+  >([]);
   const [loadingRecordings, setLoadingRecordings] = useState(false);
   const [browseDays, setBrowseDays] = useState(30);
   const [browseSearch, setBrowseSearch] = useState("");
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [enqueuingId, setEnqueuingId] = useState<string | null>(null);
   const [enqueuingAll, setEnqueuingAll] = useState(false);
-  const [enqueuedSuccess, setEnqueuedSuccess] = useState<Record<string, boolean>>({});
+  const [enqueuedSuccess, setEnqueuedSuccess] = useState<
+    Record<string, boolean>
+  >({});
 
-  // Fetch all Zoom accounts
+  // Subject Teachers & Topic State (Persisted in Supabase DB)
+  const [subjectsConfig, setSubjectsConfig] = useState<
+    Record<string, SubjectConfigItem>
+  >({});
+  const [selectedTeacherAcc, setSelectedTeacherAcc] =
+    useState<ZoomAccount | null>(null);
+  const [teacherModalOpen, setTeacherModalOpen] = useState(false);
+  const [newTeacherInput, setNewTeacherInput] = useState("");
+  const [savingTeacherConfig, setSavingTeacherConfig] = useState(false);
+  const [teacherSuccessMsg, setTeacherSuccessMsg] = useState<string | null>(
+    null,
+  );
+
+  // Fetch all Zoom accounts and subject teacher configurations
   const fetchAccounts = useCallback(async () => {
     try {
       setRefreshing(true);
-      const res = await fetch("/api/zoom-youtube/zoom/accounts");
+      const [res, thumbRes] = await Promise.all([
+        fetch("/api/zoom-youtube/zoom/accounts"),
+        fetch("/api/zoom-youtube/thumbnails").catch(() => null),
+      ]);
       const data = await res.json();
       if (data.success && Array.isArray(data.accounts)) {
         setAccounts(data.accounts);
       }
+      if (thumbRes && thumbRes.ok) {
+        const thumbData = await thumbRes.json();
+        if (thumbData.success && thumbData.subjectsConfig) {
+          setSubjectsConfig(thumbData.subjectsConfig);
+        }
+      }
     } catch (err: unknown) {
-      console.error("Failed to fetch Zoom accounts:", err);
+      console.error("Failed to fetch Zoom accounts & teacher config:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
+
+  const handleOpenTeacherModal = (acc: ZoomAccount) => {
+    setSelectedTeacherAcc(acc);
+    if (!subjectsConfig[acc.accountName]) {
+      setSubjectsConfig((prev) => ({
+        ...prev,
+        [acc.accountName]: {
+          teachers: [{ id: "t1", name: "Union Education", isActive: true }],
+          currentTopic: "",
+        },
+      }));
+    }
+    setNewTeacherInput("");
+    setTeacherSuccessMsg(null);
+    setTeacherModalOpen(true);
+  };
+
+  const handleAddTeacherInModal = () => {
+    if (!selectedTeacherAcc || !newTeacherInput.trim()) return;
+    const name = newTeacherInput.trim();
+    setSubjectsConfig((prev) => {
+      const current = prev[selectedTeacherAcc.accountName] || {
+        teachers: [],
+        currentTopic: "",
+      };
+      return {
+        ...prev,
+        [selectedTeacherAcc.accountName]: {
+          ...current,
+          teachers: [
+            ...current.teachers,
+            { id: `t_${Date.now()}`, name, isActive: true },
+          ],
+        },
+      };
+    });
+    setNewTeacherInput("");
+  };
+
+  const handleToggleTeacherActiveInModal = (teacherId: string) => {
+    if (!selectedTeacherAcc) return;
+    setSubjectsConfig((prev) => {
+      const current = prev[selectedTeacherAcc.accountName] || {
+        teachers: [],
+        currentTopic: "",
+      };
+      return {
+        ...prev,
+        [selectedTeacherAcc.accountName]: {
+          ...current,
+          teachers: current.teachers.map((t) =>
+            t.id === teacherId ? { ...t, isActive: !t.isActive } : t,
+          ),
+        },
+      };
+    });
+  };
+
+  const handleEditTeacherNameInModal = (teacherId: string, newName: string) => {
+    if (!selectedTeacherAcc) return;
+    setSubjectsConfig((prev) => {
+      const current = prev[selectedTeacherAcc.accountName] || {
+        teachers: [],
+        currentTopic: "",
+      };
+      return {
+        ...prev,
+        [selectedTeacherAcc.accountName]: {
+          ...current,
+          teachers: current.teachers.map((t) =>
+            t.id === teacherId ? { ...t, name: newName } : t,
+          ),
+        },
+      };
+    });
+  };
+
+  const handleDeleteTeacherInModal = (teacherId: string) => {
+    if (!selectedTeacherAcc) return;
+    setSubjectsConfig((prev) => {
+      const current = prev[selectedTeacherAcc.accountName] || {
+        teachers: [],
+        currentTopic: "",
+      };
+      return {
+        ...prev,
+        [selectedTeacherAcc.accountName]: {
+          ...current,
+          teachers: current.teachers.filter((t) => t.id !== teacherId),
+        },
+      };
+    });
+  };
+
+  const handleSaveTeacherModal = async () => {
+    if (!selectedTeacherAcc) return;
+    setSavingTeacherConfig(true);
+    try {
+      const cfg = subjectsConfig[selectedTeacherAcc.accountName] || {
+        teachers: [],
+        currentTopic: "",
+      };
+      const res = await fetch("/api/zoom-youtube/thumbnails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_subject_config",
+          accountName: selectedTeacherAcc.accountName,
+          teachers: cfg.teachers,
+          currentTopic: cfg.currentTopic,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTeacherSuccessMsg("Saved to Supabase database!");
+        setTimeout(() => {
+          setTeacherSuccessMsg(null);
+          setTeacherModalOpen(false);
+        }, 500);
+      } else {
+        alert(data.error || "Failed to save teacher configuration");
+      }
+    } catch {
+      alert("Failed to save teacher configuration");
+    } finally {
+      setSavingTeacherConfig(false);
+    }
+  };
 
   useEffect(() => {
     fetchAccounts();
@@ -144,7 +314,7 @@ export default function ZoomAccountsPage() {
     return accounts.filter(
       (acc) =>
         acc.accountName.toLowerCase().includes(q) ||
-        acc.accountId.toLowerCase().includes(q)
+        acc.accountId.toLowerCase().includes(q),
     );
   }, [accounts, search]);
 
@@ -156,7 +326,7 @@ export default function ZoomAccountsPage() {
       (r) =>
         (r.topic && r.topic.toLowerCase().includes(q)) ||
         (r.hostName && r.hostName.toLowerCase().includes(q)) ||
-        (r.fileId && r.fileId.toLowerCase().includes(q))
+        (r.fileId && r.fileId.toLowerCase().includes(q)),
     );
   }, [browsedRecordings, browseSearch]);
 
@@ -175,7 +345,10 @@ export default function ZoomAccountsPage() {
           ...prev,
           [accId]: {
             success: true,
-            message: `Connected! Found ${data.usersCount} active users (${data.sampleUsers?.map((u: any) => u.email).slice(0, 2).join(", ")})`,
+            message: `Connected! Found ${data.usersCount} active users (${data.sampleUsers
+              ?.map((u: any) => u.email)
+              .slice(0, 2)
+              .join(", ")})`,
             usersCount: data.usersCount,
             sampleUsers: data.sampleUsers,
           },
@@ -214,7 +387,12 @@ export default function ZoomAccountsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setNewAccount({ accountName: "", accountId: "", clientId: "", clientSecret: "" });
+        setNewAccount({
+          accountName: "",
+          accountId: "",
+          clientId: "",
+          clientSecret: "",
+        });
         setShowAddModal(false);
         fetchAccounts();
       } else {
@@ -290,7 +468,7 @@ export default function ZoomAccountsPage() {
     try {
       const nextStatus = !acc.isActive;
       setAccounts((prev) =>
-        prev.map((a) => (a.id === acc.id ? { ...a, isActive: nextStatus } : a))
+        prev.map((a) => (a.id === acc.id ? { ...a, isActive: nextStatus } : a)),
       );
 
       const res = await fetch("/api/zoom-youtube/zoom/accounts", {
@@ -311,15 +489,22 @@ export default function ZoomAccountsPage() {
 
   // Delete account
   const handleDeleteAccount = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove Zoom account "${name}"? Existing saved recordings will not be deleted.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to remove Zoom account "${name}"? Existing saved recordings will not be deleted.`,
+      )
+    ) {
       return;
     }
 
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/zoom-youtube/zoom/accounts?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(
+        `/api/zoom-youtube/zoom/accounts?id=${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+        },
+      );
       const data = await res.json();
       if (data.success) {
         setAccounts((prev) => prev.filter((a) => a.id !== id));
@@ -342,15 +527,21 @@ export default function ZoomAccountsPage() {
     setBrowseSearch("");
 
     try {
-      const res = await fetch(`/api/zoom-youtube/zoom/recordings?accountId=${encodeURIComponent(acc.id)}&days=${days}`);
+      const res = await fetch(
+        `/api/zoom-youtube/zoom/recordings?accountId=${encodeURIComponent(acc.id)}&days=${days}`,
+      );
       const data = await res.json();
       if (data.success && Array.isArray(data.recordings)) {
         setBrowsedRecordings(data.recordings);
       } else {
-        setBrowseError(data.error || "Failed to load cloud recordings from Zoom");
+        setBrowseError(
+          data.error || "Failed to load cloud recordings from Zoom",
+        );
       }
     } catch (err: unknown) {
-      setBrowseError(err instanceof Error ? err.message : "Error browsing recordings");
+      setBrowseError(
+        err instanceof Error ? err.message : "Error browsing recordings",
+      );
     } finally {
       setLoadingRecordings(false);
     }
@@ -389,7 +580,9 @@ export default function ZoomAccountsPage() {
       if (data.success) {
         setEnqueuedSuccess((prev) => ({ ...prev, [fileId]: true }));
         setBrowsedRecordings((prev) =>
-          prev.map((r) => (r.fileId === fileId ? { ...r, status: "queued" } : r))
+          prev.map((r) =>
+            r.fileId === fileId ? { ...r, status: "queued" } : r,
+          ),
         );
       } else {
         alert(data.error || "Failed to queue recording");
@@ -404,7 +597,7 @@ export default function ZoomAccountsPage() {
   // Enqueue all un-uploaded browsed recordings
   const handleQueueAll = async () => {
     const unUploaded = browsedRecordings.filter(
-      (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued"
+      (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued",
     );
     if (unUploaded.length === 0) {
       alert("All recordings in this list are already queued or uploaded!");
@@ -444,7 +637,9 @@ export default function ZoomAccountsPage() {
           return next;
         });
         setBrowsedRecordings((prev) =>
-          prev.map((r) => (enqueuedSet.has(r.fileId) ? { ...r, status: "queued" } : r))
+          prev.map((r) =>
+            enqueuedSet.has(r.fileId) ? { ...r, status: "queued" } : r,
+          ),
         );
       } else {
         alert(data.error || "Failed to bulk queue recordings");
@@ -456,7 +651,8 @@ export default function ZoomAccountsPage() {
     }
   };
 
-  const toMB = (bytes: number) => (bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "—");
+  const toMB = (bytes: number) =>
+    bytes ? `${Math.round(bytes / (1024 * 1024))} MB` : "—";
   const activeCount = accounts.filter((a) => a.isActive).length;
 
   return (
@@ -476,7 +672,8 @@ export default function ZoomAccountsPage() {
                 </span>
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Connect and manage Server-to-Server OAuth accounts to automatically discover and watermark class recordings.
+                Connect and manage Server-to-Server OAuth accounts to
+                automatically discover and watermark class recordings.
               </p>
             </div>
           </div>
@@ -488,14 +685,21 @@ export default function ZoomAccountsPage() {
             onClick={fetchAccounts}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs disabled:opacity-50">
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-slate-500" : ""}`} />
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-slate-500" : ""}`}
+            />
             <span>Refresh</span>
           </button>
 
           <button
             type="button"
             onClick={() => {
-              setNewAccount({ accountName: "", accountId: "", clientId: "", clientSecret: "" });
+              setNewAccount({
+                accountName: "",
+                accountId: "",
+                clientId: "",
+                clientSecret: "",
+              });
               setAddError(null);
               setShowAddModal(true);
             }}
@@ -510,29 +714,47 @@ export default function ZoomAccountsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 bg-white dark:bg-zinc-950 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Accounts</span>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Total Accounts
+            </span>
             <Video className="w-4 h-4 text-slate-400" />
           </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-2">{accounts.length}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Configured S2S OAuth instances</p>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-2">
+            {accounts.length}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Configured S2S OAuth instances
+          </p>
         </div>
 
         <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 bg-white dark:bg-zinc-950 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Active Syncing</span>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Active Syncing
+            </span>
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
-          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">{activeCount}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Auto-discovery enabled</p>
+          <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+            {activeCount}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Auto-discovery enabled
+          </p>
         </div>
 
         <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 bg-white dark:bg-zinc-950 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">OAuth Mode</span>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              OAuth Mode
+            </span>
             <Shield className="w-4 h-4 text-blue-500" />
           </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-white mt-2">Server-to-Server (Zero User Login)</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Encrypted at rest with AES-256</p>
+          <p className="text-sm font-bold text-slate-900 dark:text-white mt-2">
+            Server-to-Server (Zero User Login)
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Encrypted at rest with AES-256
+          </p>
         </div>
       </div>
 
@@ -556,7 +778,9 @@ export default function ZoomAccountsPage() {
       {loading ? (
         <div className="text-center py-16 border border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-950">
           <Loader2 className="w-7 h-7 text-slate-400 animate-spin mx-auto mb-3" />
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Loading Zoom accounts...</p>
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            Loading Zoom accounts...
+          </p>
         </div>
       ) : filteredAccounts.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl bg-white dark:bg-zinc-950">
@@ -564,7 +788,9 @@ export default function ZoomAccountsPage() {
             <Video className="w-6 h-6 text-slate-400" />
           </div>
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-            {search ? "No matching Zoom accounts" : "No Zoom accounts connected"}
+            {search
+              ? "No matching Zoom accounts"
+              : "No Zoom accounts connected"}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
             {search
@@ -574,7 +800,12 @@ export default function ZoomAccountsPage() {
           {!search && (
             <button
               onClick={() => {
-                setNewAccount({ accountName: "", accountId: "", clientId: "", clientSecret: "" });
+                setNewAccount({
+                  accountName: "",
+                  accountId: "",
+                  clientId: "",
+                  clientSecret: "",
+                });
                 setAddError(null);
                 setShowAddModal(true);
               }}
@@ -603,10 +834,14 @@ export default function ZoomAccountsPage() {
                         <Video className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate" title={acc.accountName}>
+                        <h3
+                          className="text-sm font-bold text-slate-900 dark:text-white truncate"
+                          title={acc.accountName}>
                           {acc.accountName}
                         </h3>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate" title={acc.accountId}>
+                        <p
+                          className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate"
+                          title={acc.accountId}>
                           ID: {acc.accountId}
                         </p>
                       </div>
@@ -655,7 +890,34 @@ export default function ZoomAccountsPage() {
 
                   <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
                     <Clock className="w-3 h-3 text-slate-400" />
-                    <span>Connected {new Date(acc.createdAt).toLocaleDateString()}</span>
+                    <span>
+                      Connected {new Date(acc.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {/* Assigned Instructors & Manage Button */}
+                  <div className="pt-2.5 border-t border-slate-100 dark:border-zinc-900 flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-zinc-400 min-w-0">
+                      <Users className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                      <span
+                        className="truncate text-[11px] font-medium"
+                        title={
+                          subjectsConfig[acc.accountName]?.teachers
+                            ?.filter((t) => t.isActive)
+                            .map((t) => t.name)
+                            .join(", ") || "No active teacher"
+                        }>
+                        {subjectsConfig[acc.accountName]?.teachers
+                          ?.filter((t) => t.isActive)
+                          .map((t) => t.name)
+                          .join(", ") || "No active teacher"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenTeacherModal(acc)}
+                      className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline shrink-0">
+                      Manage Teachers
+                    </button>
                   </div>
                 </div>
 
@@ -675,7 +937,11 @@ export default function ZoomAccountsPage() {
                       onClick={() => handleTestConnection(acc.id)}
                       disabled={isTesting}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 px-2.5 py-1.5 rounded-lg transition disabled:opacity-50">
-                      {isTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      {isTesting ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3 h-3" />
+                      )}
                       <span>{isTesting ? "Testing..." : "Test"}</span>
                     </button>
                   </div>
@@ -691,11 +957,17 @@ export default function ZoomAccountsPage() {
 
                     <button
                       type="button"
-                      onClick={() => handleDeleteAccount(acc.id, acc.accountName)}
+                      onClick={() =>
+                        handleDeleteAccount(acc.id, acc.accountName)
+                      }
                       disabled={isDeleting}
                       className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition disabled:opacity-50"
                       title="Remove Account">
-                      {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      {isDeleting ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -715,14 +987,39 @@ export default function ZoomAccountsPage() {
         </div>
         <ol className="text-xs text-slate-500 dark:text-slate-400 space-y-1.5 list-decimal list-inside leading-relaxed">
           <li>
-            Go to the <a href="https://marketplace.zoom.us" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-blue-500">Zoom App Marketplace</a> and click <strong>Develop → Build App</strong>.
+            Go to the{" "}
+            <a
+              href="https://marketplace.zoom.us"
+              target="_blank"
+              rel="noreferrer"
+              className="underline font-semibold hover:text-blue-500">
+              Zoom App Marketplace
+            </a>{" "}
+            and click <strong>Develop → Build App</strong>.
           </li>
-          <li>Choose <strong>Server-to-Server OAuth</strong> as the app type and name it (e.g. <em>Vidia Automation</em>).</li>
-          <li>Copy your <strong>Account ID</strong>, <strong>Client ID</strong>, and <strong>Client Secret</strong> from the App Credentials tab.</li>
           <li>
-            In the <strong>Scopes</strong> tab, add: <code className="bg-slate-100 dark:bg-zinc-900 px-1 py-0.5 rounded text-[11px] font-mono">recording:read:admin</code> and <code className="bg-slate-100 dark:bg-zinc-900 px-1 py-0.5 rounded text-[11px] font-mono">user:read:admin</code>.
+            Choose <strong>Server-to-Server OAuth</strong> as the app type and
+            name it (e.g. <em>Vidia Automation</em>).
           </li>
-          <li>Click <strong>Activate your app</strong> in Zoom. Once active, paste your credentials into Vidia to start automatic watermarking!</li>
+          <li>
+            Copy your <strong>Account ID</strong>, <strong>Client ID</strong>,
+            and <strong>Client Secret</strong> from the App Credentials tab.
+          </li>
+          <li>
+            In the <strong>Scopes</strong> tab, add:{" "}
+            <code className="bg-slate-100 dark:bg-zinc-900 px-1 py-0.5 rounded text-[11px] font-mono">
+              recording:read:admin
+            </code>{" "}
+            and{" "}
+            <code className="bg-slate-100 dark:bg-zinc-900 px-1 py-0.5 rounded text-[11px] font-mono">
+              user:read:admin
+            </code>
+            .
+          </li>
+          <li>
+            Click <strong>Activate your app</strong> in Zoom. Once active, paste
+            your credentials into Vidia to start automatic watermarking!
+          </li>
         </ol>
       </div>
 
@@ -753,7 +1050,9 @@ export default function ZoomAccountsPage() {
               required
               placeholder="e.g. Science Class Account, Union Math, Main Host"
               value={newAccount.accountName}
-              onChange={(e) => setNewAccount({ ...newAccount, accountName: e.target.value })}
+              onChange={(e) =>
+                setNewAccount({ ...newAccount, accountName: e.target.value })
+              }
               className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
             />
           </div>
@@ -767,7 +1066,12 @@ export default function ZoomAccountsPage() {
               required
               placeholder="Found under App Credentials in Zoom Marketplace"
               value={newAccount.accountId}
-              onChange={(e) => setNewAccount({ ...newAccount, accountId: e.target.value.trim() })}
+              onChange={(e) =>
+                setNewAccount({
+                  ...newAccount,
+                  accountId: e.target.value.trim(),
+                })
+              }
               className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
             />
           </div>
@@ -782,7 +1086,12 @@ export default function ZoomAccountsPage() {
                 required
                 placeholder="Client ID"
                 value={newAccount.clientId}
-                onChange={(e) => setNewAccount({ ...newAccount, clientId: e.target.value.trim() })}
+                onChange={(e) =>
+                  setNewAccount({
+                    ...newAccount,
+                    clientId: e.target.value.trim(),
+                  })
+                }
                 className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
               />
             </div>
@@ -796,7 +1105,12 @@ export default function ZoomAccountsPage() {
                 required
                 placeholder="Client Secret"
                 value={newAccount.clientSecret}
-                onChange={(e) => setNewAccount({ ...newAccount, clientSecret: e.target.value.trim() })}
+                onChange={(e) =>
+                  setNewAccount({
+                    ...newAccount,
+                    clientSecret: e.target.value.trim(),
+                  })
+                }
                 className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
               />
             </div>
@@ -814,8 +1128,16 @@ export default function ZoomAccountsPage() {
               type="submit"
               disabled={savingAdd}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50">
-              {savingAdd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              <span>{savingAdd ? "Verifying & Saving..." : "Verify & Connect Account"}</span>
+              {savingAdd ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {savingAdd
+                  ? "Verifying & Saving..."
+                  : "Verify & Connect Account"}
+              </span>
             </button>
           </div>
         </form>
@@ -848,7 +1170,12 @@ export default function ZoomAccountsPage() {
                 type="text"
                 required
                 value={editingAccount.accountName}
-                onChange={(e) => setEditingAccount({ ...editingAccount, accountName: e.target.value })}
+                onChange={(e) =>
+                  setEditingAccount({
+                    ...editingAccount,
+                    accountName: e.target.value,
+                  })
+                }
                 className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
               />
             </div>
@@ -861,7 +1188,12 @@ export default function ZoomAccountsPage() {
                 type="text"
                 required
                 value={editingAccount.accountId}
-                onChange={(e) => setEditingAccount({ ...editingAccount, accountId: e.target.value.trim() })}
+                onChange={(e) =>
+                  setEditingAccount({
+                    ...editingAccount,
+                    accountId: e.target.value.trim(),
+                  })
+                }
                 className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
               />
             </div>
@@ -874,7 +1206,8 @@ export default function ZoomAccountsPage() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Leave both Client ID and Client Secret blank to keep your current encrypted credentials unchanged.
+                Leave both Client ID and Client Secret blank to keep your
+                current encrypted credentials unchanged.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -886,7 +1219,12 @@ export default function ZoomAccountsPage() {
                     type="text"
                     placeholder="Leave blank to keep current"
                     value={editingAccount.clientId}
-                    onChange={(e) => setEditingAccount({ ...editingAccount, clientId: e.target.value.trim() })}
+                    onChange={(e) =>
+                      setEditingAccount({
+                        ...editingAccount,
+                        clientId: e.target.value.trim(),
+                      })
+                    }
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
                   />
                 </div>
@@ -899,7 +1237,12 @@ export default function ZoomAccountsPage() {
                     type="password"
                     placeholder="Leave blank to keep current"
                     value={editingAccount.clientSecret}
-                    onChange={(e) => setEditingAccount({ ...editingAccount, clientSecret: e.target.value.trim() })}
+                    onChange={(e) =>
+                      setEditingAccount({
+                        ...editingAccount,
+                        clientSecret: e.target.value.trim(),
+                      })
+                    }
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white transition"
                   />
                 </div>
@@ -913,14 +1256,20 @@ export default function ZoomAccountsPage() {
                   Account Active Status
                 </label>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  When active, newly finished Zoom cloud recordings from this account will be automatically discovered.
+                  When active, newly finished Zoom cloud recordings from this
+                  account will be automatically discovered.
                 </p>
               </div>
 
               <input
                 type="checkbox"
                 checked={editingAccount.isActive}
-                onChange={(e) => setEditingAccount({ ...editingAccount, isActive: e.target.checked })}
+                onChange={(e) =>
+                  setEditingAccount({
+                    ...editingAccount,
+                    isActive: e.target.checked,
+                  })
+                }
                 className="w-4 h-4 rounded text-zinc-900 focus:ring-zinc-900 dark:focus:ring-white cursor-pointer"
               />
             </div>
@@ -937,7 +1286,11 @@ export default function ZoomAccountsPage() {
                 type="submit"
                 disabled={savingEdit}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl shadow-xs transition disabled:opacity-50">
-                {savingEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                {savingEdit ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
                 <span>{savingEdit ? "Updating..." : "Save Changes"}</span>
               </button>
             </div>
@@ -949,7 +1302,11 @@ export default function ZoomAccountsPage() {
       <Modal
         isOpen={Boolean(browsingAccount)}
         onClose={() => setBrowsingAccount(null)}
-        title={browsingAccount ? `Cloud Recordings: ${browsingAccount.accountName}` : "Cloud Recordings"}
+        title={
+          browsingAccount
+            ? `Cloud Recordings: ${browsingAccount.accountName}`
+            : "Cloud Recordings"
+        }
         description="Browse recordings directly from this Zoom account's cloud storage and queue them for processing."
         icon={<Film className="w-5 h-5 text-blue-500" />}
         size="5xl">
@@ -957,14 +1314,17 @@ export default function ZoomAccountsPage() {
           {/* Days filter & Quick actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-zinc-800">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Timeframe:</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Timeframe:
+              </span>
               {[7, 14, 30, 60].map((d) => (
                 <button
                   key={d}
                   type="button"
                   onClick={() => {
                     setBrowseDays(d);
-                    if (browsingAccount) handleBrowseAccount(browsingAccount, d);
+                    if (browsingAccount)
+                      handleBrowseAccount(browsingAccount, d);
                   }}
                   className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition ${
                     browseDays === d
@@ -979,10 +1339,15 @@ export default function ZoomAccountsPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => browsingAccount && handleBrowseAccount(browsingAccount, browseDays)}
+                onClick={() =>
+                  browsingAccount &&
+                  handleBrowseAccount(browsingAccount, browseDays)
+                }
                 disabled={loadingRecordings}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-zinc-900 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded-lg transition disabled:opacity-50">
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingRecordings ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${loadingRecordings ? "animate-spin" : ""}`}
+                />
                 <span>Refresh Zoom</span>
               </button>
 
@@ -992,12 +1357,19 @@ export default function ZoomAccountsPage() {
                   onClick={handleQueueAll}
                   disabled={enqueuingAll}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-lg shadow-xs transition disabled:opacity-50">
-                  {enqueuingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cloud className="w-3.5 h-3.5" />}
+                  {enqueuingAll ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Cloud className="w-3.5 h-3.5" />
+                  )}
                   <span>
                     Queue All for Cloud (
                     {
                       browsedRecordings.filter(
-                        (r) => r.status !== "uploaded" && !r.youtubeUrl && r.status !== "queued"
+                        (r) =>
+                          r.status !== "uploaded" &&
+                          !r.youtubeUrl &&
+                          r.status !== "queued",
                       ).length
                     }
                     )
@@ -1032,10 +1404,12 @@ export default function ZoomAccountsPage() {
             <div className="text-center py-16">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-2" />
               <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Scanning Zoom Cloud for meetings in the last {browseDays} days...
+                Scanning Zoom Cloud for meetings in the last {browseDays}{" "}
+                days...
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                Fetching cloud recordings and cross-referencing your upload status.
+                Fetching cloud recordings and cross-referencing your upload
+                status.
               </p>
             </div>
           ) : filteredBrowsedRecordings.length === 0 ? (
@@ -1047,15 +1421,18 @@ export default function ZoomAccountsPage() {
                   : `No cloud recordings found for this account in the last ${browseDays} days.`}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Ensure cloud recording was enabled during the meeting and has finished processing in Zoom.
+                Ensure cloud recording was enabled during the meeting and has
+                finished processing in Zoom.
               </p>
             </div>
           ) : (
             <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
               {filteredBrowsedRecordings.map((rec) => {
-                const isEnqueued = enqueuedSuccess[rec.fileId] || rec.status === "queued";
+                const isEnqueued =
+                  enqueuedSuccess[rec.fileId] || rec.status === "queued";
                 const isEnqueuing = enqueuingId === rec.fileId;
-                const isUploaded = rec.status === "uploaded" || Boolean(rec.youtubeUrl);
+                const isUploaded =
+                  rec.status === "uploaded" || Boolean(rec.youtubeUrl);
                 const isProcessing =
                   rec.status === "downloading" ||
                   rec.status === "watermarking" ||
@@ -1082,7 +1459,10 @@ export default function ZoomAccountsPage() {
                           {rec.hostName && (
                             <>
                               <span>
-                                Host: <strong className="text-slate-700 dark:text-slate-200">{rec.hostName}</strong>
+                                Host:{" "}
+                                <strong className="text-slate-700 dark:text-slate-200">
+                                  {rec.hostName}
+                                </strong>
                               </span>
                               <span>•</span>
                             </>
@@ -1123,7 +1503,9 @@ export default function ZoomAccountsPage() {
                         ) : isProcessing ? (
                           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg">
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                            <span className="capitalize">Cloud: {rec.status}...</span>
+                            <span className="capitalize">
+                              Cloud: {rec.status}...
+                            </span>
                           </div>
                         ) : isEnqueued ? (
                           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -1139,7 +1521,8 @@ export default function ZoomAccountsPage() {
                                   fileId: rec.fileId,
                                   topic: rec.topic,
                                   downloadUrl: rec.downloadUrl,
-                                  zoomAccountId: rec.zoomAccountId || browsingAccount?.id,
+                                  zoomAccountId:
+                                    rec.zoomAccountId || browsingAccount?.id,
                                   startTime: rec.startTime,
                                   fileSizeBytes: rec.fileSizeBytes,
                                   durationMinutes: rec.durationMinutes,
@@ -1147,7 +1530,10 @@ export default function ZoomAccountsPage() {
                                   meetingId: rec.meetingId,
                                 };
                                 try {
-                                  sessionStorage.setItem("zoomyt_selected_recording", JSON.stringify(sel));
+                                  sessionStorage.setItem(
+                                    "zoomyt_selected_recording",
+                                    JSON.stringify(sel),
+                                  );
                                 } catch {}
                                 router.push("/dashboard/studio");
                               }}
@@ -1161,8 +1547,16 @@ export default function ZoomAccountsPage() {
                               onClick={() => handleEnqueueBrowsed(rec)}
                               disabled={isEnqueuing}
                               className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 px-3 py-1.5 rounded-lg transition shadow-xs disabled:opacity-50">
-                              {isEnqueuing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Cloud className="w-3.5 h-3.5" />}
-                              <span>{isEnqueuing ? "Queueing..." : "Queue for Cloud"}</span>
+                              {isEnqueuing ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Cloud className="w-3.5 h-3.5" />
+                              )}
+                              <span>
+                                {isEnqueuing
+                                  ? "Queueing..."
+                                  : "Queue for Cloud"}
+                              </span>
                             </button>
                           </div>
                         )}
@@ -1191,6 +1585,185 @@ export default function ZoomAccountsPage() {
             </button>
           </div>
         </div>
+      </Modal>
+      <Modal
+        isOpen={teacherModalOpen}
+        onClose={() => {
+          if (!savingTeacherConfig) setTeacherModalOpen(false);
+        }}
+        title={
+          selectedTeacherAcc
+            ? `Instructors & Topic: ${selectedTeacherAcc.accountName}`
+            : "Manage Instructors"
+        }
+        description="Assign multiple instructors, toggle active status for today's classes, and define current chapter/topic. All changes are saved to database for the entire team."
+        icon={<Users className="w-5 h-5 text-indigo-500" />}
+        size="lg">
+        {selectedTeacherAcc && (
+          <div className="space-y-5 pt-2">
+            {teacherSuccessMsg && (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{teacherSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Current Chapter / Topic */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-900 dark:text-white">
+                Current Chapter / Topic
+              </label>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                PMR recordings without a specific name will automatically use
+                this topic on thumbnails and YouTube.
+              </p>
+              <input
+                type="text"
+                value={
+                  subjectsConfig[selectedTeacherAcc.accountName]
+                    ?.currentTopic || ""
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSubjectsConfig((prev) => ({
+                    ...prev,
+                    [selectedTeacherAcc.accountName]: {
+                      teachers:
+                        prev[selectedTeacherAcc.accountName]?.teachers || [],
+                      currentTopic: val,
+                    },
+                  }));
+                }}
+                placeholder="e.g. प्रकाश र अपवर्तन (Optics & Refraction)"
+                className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
+              />
+            </div>
+
+            {/* Add New Teacher */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-900 dark:text-white">
+                Add Instructor
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newTeacherInput}
+                  onChange={(e) => setNewTeacherInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddTeacherInModal();
+                    }
+                  }}
+                  placeholder="e.g. Er. Ramesh Bhattarai"
+                  className="flex-1 text-xs px-3 py-2 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddTeacherInModal}
+                  className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl transition shadow-xs">
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Teacher List */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                Assigned Instructors (
+                {subjectsConfig[selectedTeacherAcc.accountName]?.teachers
+                  ?.length || 0}
+                )
+              </label>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {(
+                  subjectsConfig[selectedTeacherAcc.accountName]?.teachers || []
+                ).length === 0 ? (
+                  <div className="p-4 border border-dashed border-slate-200 dark:border-zinc-800 rounded-xl text-center text-xs text-slate-400">
+                    No teachers added yet for {selectedTeacherAcc.accountName}.
+                    Add one above!
+                  </div>
+                ) : (
+                  (
+                    subjectsConfig[selectedTeacherAcc.accountName]?.teachers ||
+                    []
+                  ).map((t) => (
+                    <div
+                      key={t.id}
+                      className={`p-3 rounded-xl border transition flex items-center justify-between gap-3 ${
+                        t.isActive
+                          ? "bg-slate-50 dark:bg-zinc-900 border-slate-300 dark:border-zinc-700 shadow-xs"
+                          : "bg-white dark:bg-zinc-950 border-slate-200 dark:border-zinc-800 opacity-60"
+                      }`}>
+                      <label className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1">
+                        <input
+                          type="checkbox"
+                          checked={t.isActive}
+                          onChange={() =>
+                            handleToggleTeacherActiveInModal(t.id)
+                          }
+                          className="w-4 h-4 rounded text-zinc-900 focus:ring-zinc-900 dark:focus:ring-white border-slate-300 dark:border-zinc-700 cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <input
+                            type="text"
+                            value={t.name}
+                            onChange={(e) =>
+                              handleEditTeacherNameInModal(t.id, e.target.value)
+                            }
+                            className="w-full text-xs font-bold bg-transparent text-slate-900 dark:text-white border-b border-transparent hover:border-slate-300 dark:hover:border-zinc-600 focus:border-slate-900 dark:focus:border-white focus:outline-none"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            {t.isActive
+                              ? "Active (Teaching today / shown on thumbnail)"
+                              : "Inactive"}
+                          </p>
+                        </div>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTeacherInModal(t.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+                        title="Remove teacher">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-zinc-800">
+              <span className="text-[11px] text-slate-400">
+                Saved in Supabase DB (shared with all team members).
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTeacherModalOpen(false)}
+                  className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900 rounded-xl transition">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTeacherModal}
+                  disabled={savingTeacherConfig}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl transition shadow-xs disabled:opacity-50">
+                  {savingTeacherConfig ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {savingTeacherConfig ? "Saving to DB..." : "Save Changes"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

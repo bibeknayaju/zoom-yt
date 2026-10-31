@@ -13,6 +13,10 @@ import {
   recordActivitySuccess,
   recordActivityFailure,
 } from "@/lib/activity-logger";
+import {
+  generateAutoThumbnailForUpload,
+  uploadThumbnailToYouTube,
+} from "@/lib/thumbnail-server";
 
 const execAsync = promisify(exec);
 
@@ -858,6 +862,7 @@ export async function uploadVideoToYouTube(
     title: string;
     description: string;
     privacyStatus?: "unlisted" | "public" | "private";
+    thumbnailBuffer?: Buffer;
   },
   onProgress?: (bytesUploaded: number, totalBytes: number, etaMsg?: string) => void,
   abortSignal?: AbortSignal
@@ -943,6 +948,23 @@ export async function uploadVideoToYouTube(
 
       const videoId = res.data.id;
       if (!videoId) throw new Error("YouTube did not return a video ID");
+
+      if (metadata.thumbnailBuffer && metadata.thumbnailBuffer.length > 0) {
+        try {
+          console.log(`🎨 Uploading custom 1080p thumbnail for YouTube video ${videoId}...`);
+          const { Readable } = await import("node:stream");
+          await youtube.thumbnails.set({
+            videoId,
+            media: {
+              mimeType: "image/png",
+              body: Readable.from(metadata.thumbnailBuffer),
+            },
+          });
+          console.log(`✅ [YouTube] Custom 1080p thumbnail successfully set on video ${videoId}!`);
+        } catch (thumbErr: any) {
+          console.warn(`⚠️ [YouTube] Thumbnail upload warning (video was uploaded successfully): ${thumbErr?.message || thumbErr}`);
+        }
+      }
 
       return {
         videoId,
@@ -1196,12 +1218,29 @@ export async function processRecordingEndToEnd(
     const finalTitle = options.customTitle || `${options.meetingTopic} | ${dateStr}`;
     const finalDescription = options.customDescription || `Class Recording: ${options.meetingTopic}\nDate: ${dateStr}\nUnion Education`;
 
+    // 🎨 Auto-generate 1080p YouTube thumbnail
+    let thumbnailBuffer: Buffer | undefined;
+    try {
+      const thumbResult = await generateAutoThumbnailForUpload({
+        accountName: options.accountName,
+        meetingTopic: options.meetingTopic,
+        meetingDate: options.meetingDate,
+      });
+      if (thumbResult?.pngBuffer) {
+        thumbnailBuffer = thumbResult.pngBuffer;
+        console.log(`🎨 [Pipeline] Generated 1080p thumbnail (${thumbResult.templateId}) for "${thumbResult.subject}" with instructor(s): ${thumbResult.teachers.join(", ")}`);
+      }
+    } catch (thumbErr) {
+      console.warn("⚠️ [Pipeline] Thumbnail generation skipped:", thumbErr);
+    }
+
     const uploadRes = await uploadVideoToYouTube(
       uploadFilePath,
       {
         title: finalTitle,
         description: finalDescription,
         privacyStatus: options.privacyStatus || "unlisted",
+        thumbnailBuffer,
       },
       (bytesUploaded, totalBytes, etaMsg) => {
         const upPct = totalBytes > 0 ? Math.min(Math.round((bytesUploaded / totalBytes) * 100), 99) : 0;
@@ -1471,12 +1510,29 @@ export async function uploadWatermarkedToYouTube(
     const finalTitle = options.customTitle || `${options.meetingTopic} | ${dateStr}`;
     const finalDescription = options.customDescription || `Class Recording: ${options.meetingTopic}\nDate: ${dateStr}\nUnion Education`;
 
+    // 🎨 Auto-generate 1080p YouTube thumbnail
+    let thumbnailBuffer: Buffer | undefined;
+    try {
+      const thumbResult = await generateAutoThumbnailForUpload({
+        accountName: options.accountName,
+        meetingTopic: options.meetingTopic,
+        meetingDate: options.meetingDate,
+      });
+      if (thumbResult?.pngBuffer) {
+        thumbnailBuffer = thumbResult.pngBuffer;
+        console.log(`🎨 [Pipeline] Generated 1080p thumbnail (${thumbResult.templateId}) for "${thumbResult.subject}" with instructor(s): ${thumbResult.teachers.join(", ")}`);
+      }
+    } catch (thumbErr) {
+      console.warn("⚠️ [Pipeline] Thumbnail generation skipped:", thumbErr);
+    }
+
     const uploadRes = await uploadVideoToYouTube(
       procPath,
       {
         title: finalTitle,
         description: finalDescription,
         privacyStatus: options.privacyStatus || "unlisted",
+        thumbnailBuffer,
       },
       (bytesUploaded, totalBytes, etaMsg) => {
         const upPct = totalBytes > 0 ? Math.min(Math.round((bytesUploaded / totalBytes) * 100), 99) : 0;

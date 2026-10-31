@@ -5,9 +5,6 @@
  * upload successes, processing failures, and daily auto-pilot runs.
  */
 
-const DEFAULT_DISCORD_WEBHOOK_URL =
-  process.env.DISCORD_WEBHOOK_URL ||
-  "https://discord.com/api/webhooks/1484594086798299349/d91Gfpxu_9K3H1zZZ86yhKmsjvNf-hJhRgVzY_wtpiSjV7K1S6wipfcdH_mQzIqO-ySM";
 
 function formatNepalTime(isoDate: string | Date): string {
   try {
@@ -65,15 +62,49 @@ export interface AutopilotSummaryParams {
   webhookUrl?: string;
 }
 
+async function getEffectiveWebhookUrl(explicitUrl?: string): Promise<string> {
+  if (explicitUrl && explicitUrl.trim()) return explicitUrl.trim();
+  if (process.env.DISCORD_WEBHOOK_URL && process.env.DISCORD_WEBHOOK_URL.trim()) {
+    return process.env.DISCORD_WEBHOOK_URL.trim();
+  }
+
+  // Fallback: check Supabase DB zy_settings
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (supabaseUrl && supabaseKey) {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data } = await supabase
+        .from("zy_settings")
+        .select("template_data")
+        .eq("id", "default")
+        .maybeSingle();
+      const autopilot = (data?.template_data as any)?.autopilot;
+      const dbUrl = autopilot?.discordWebhookUrl || autopilot?.discord_webhook_url;
+      if (dbUrl && typeof dbUrl === "string" && dbUrl.trim()) {
+        return dbUrl.trim();
+      }
+    }
+  } catch {}
+
+  return "";
+}
+
 /**
  * Send raw Discord Webhook payload
  */
 export async function sendDiscordPayload(
   payload: Record<string, any>,
-  webhookUrl = DEFAULT_DISCORD_WEBHOOK_URL
+  webhookUrl?: string
 ): Promise<boolean> {
-  const url = webhookUrl || DEFAULT_DISCORD_WEBHOOK_URL;
-  if (!url) return false;
+  const url = await getEffectiveWebhookUrl(webhookUrl);
+  if (!url) {
+    console.log("ℹ️ [Discord] No webhook URL configured, skipping notification.");
+    return false;
+  }
 
   try {
     const res = await fetch(url, {
