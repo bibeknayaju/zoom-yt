@@ -18,7 +18,9 @@ import {
   Check,
   RefreshCw,
   BellRing,
+  History,
 } from "lucide-react";
+import { AutopilotRunRecord } from "@/lib/autopilot";
 
 interface WorkflowRunInfo {
   id: number;
@@ -42,6 +44,7 @@ interface AutopilotData {
     lastRunQueuedCount: number;
     lastRunUploadedCount: number;
   };
+  runs?: AutopilotRunRecord[];
   nextRunNpt: string;
   activeAccountsCount: number;
   queuedRecordingsCount: number;
@@ -63,6 +66,7 @@ export function AutopilotControlCard() {
 
   // Discord & Advanced Settings state
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [discordUrl, setDiscordUrl] = useState("");
   const [savingDiscord, setSavingDiscord] = useState(false);
   const [testingDiscord, setTestingDiscord] = useState(false);
@@ -179,7 +183,7 @@ export function AutopilotControlCard() {
     }
   };
 
-  // Send Test Discord Message
+  // Send Test Discord Message & automatically save webhook if ping succeeds
   const handleTestDiscord = async () => {
     setTestingDiscord(true);
     setDiscordMsg(null);
@@ -192,7 +196,14 @@ export function AutopilotControlCard() {
       });
       const json = await res.json();
       if (json.success) {
-        setDiscordMsg({ type: "success", text: "Test card delivered to your Discord channel!" });
+        setDiscordMsg({ type: "success", text: "✅ Test notification delivered & saved to database!" });
+        // Automatically persist to DB so cloud workers immediately have it
+        await fetch("/api/zoom-youtube/autopilot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "update_discord", discordWebhookUrl: discordUrl.trim() }),
+        });
+        fetchAutopilotStatus();
       } else {
         setDiscordMsg({ type: "error", text: json.error || "Discord delivery failed" });
       }
@@ -420,6 +431,153 @@ export function AutopilotControlCard() {
               <span>View GitHub Runner Logs</span>
               <ExternalLink className="w-3 h-3" />
             </a>
+          </div>
+        )}
+
+        {/* Auto-Pilot Run History Section */}
+        {data?.runs && data.runs.length > 0 && (
+          <div className="pt-2 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-slate-500 dark:text-zinc-400" />
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  Auto-Pilot Discovery Run History
+                </h4>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
+                  {data.runs.length} logged runs
+                </span>
+              </div>
+              <Link
+                href="/dashboard/activity?tab=autopilot"
+                className="text-[11px] font-medium text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1 underline underline-offset-2">
+                <span>View Complete History in Activity Logs</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </Link>
+            </div>
+
+            <div className="space-y-2">
+              {data.runs.slice(0, 3).map((run) => (
+                <div
+                  key={run.id}
+                  className="rounded-xl border border-slate-200 dark:border-zinc-800/80 bg-slate-50/50 dark:bg-zinc-900/40 p-3 text-xs space-y-2 transition">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                          run.status === "success"
+                            ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                            : run.status === "running"
+                            ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                            : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                        }`}>
+                        {run.status === "success" && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                        {run.status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
+                        {run.status.toUpperCase()}
+                      </span>
+
+                      <span className="font-semibold text-slate-800 dark:text-zinc-200">
+                        {new Date(run.runAt).toLocaleString("en-US", {
+                          timeZone: "Asia/Kathmandu",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}{" "}
+                        NPT
+                      </span>
+
+                      <span className="text-slate-400 dark:text-zinc-600 hidden sm:inline">•</span>
+                      <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                        {run.runnerLabel || run.triggerSource}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <span className="font-medium text-slate-600 dark:text-zinc-300">
+                        Found: <strong>{run.totalFound}</strong> classes
+                      </span>
+                      <span className="text-slate-400 dark:text-zinc-600">•</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                        {run.alreadyUploadedCount} Uploaded
+                      </span>
+                      {run.newlyQueuedCount > 0 && (
+                        <>
+                          <span className="text-slate-400 dark:text-zinc-600">•</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                            {run.newlyQueuedCount} Queued
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-400">{run.summary}</p>
+
+                  {/* Discovered Items List */}
+                  {run.items && run.items.length > 0 && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
+                        className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1">
+                        <span>
+                          {expandedRunId === run.id
+                            ? "Hide details"
+                            : `Show all ${run.items.length} discovered classes`}
+                        </span>
+                        {expandedRunId === run.id ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )}
+                      </button>
+
+                      {expandedRunId === run.id && (
+                        <div className="mt-2 space-y-1.5 pl-2 border-l-2 border-slate-200 dark:border-zinc-800">
+                          {run.items.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] py-1 bg-white dark:bg-zinc-950 px-2.5 rounded-lg border border-slate-200 dark:border-zinc-800">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
+                                  {item.accountName}
+                                </span>
+                                <span
+                                  className="font-medium text-slate-800 dark:text-zinc-200 truncate"
+                                  title={item.topic}>
+                                  {item.topic}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {item.status === "already_uploaded" && item.youtubeUrl ? (
+                                  <a
+                                    href={item.youtubeUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:underline font-semibold">
+                                    <span>Watch on YouTube</span>
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </a>
+                                ) : item.status === "queued" ? (
+                                  <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                                    Queued for processing
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 dark:text-zinc-400">
+                                    {item.status}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

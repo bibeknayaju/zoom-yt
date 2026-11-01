@@ -82,6 +82,7 @@ export default function ThumbnailStudioPage() {
   const [newTeacherName, setNewTeacherName] = useState("");
   const [savingAccountCfg, setSavingAccountCfg] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [logoBase64, setLogoBase64] = useState<string>("");
 
   // Fetch thumbnail studio status
   const fetchThumbnailData = useCallback(async () => {
@@ -93,6 +94,9 @@ export default function ThumbnailStudioPage() {
         setPreviewTemplateId(json.activeTemplateId || "glassmorphism");
         setAutoUploadThumbnail(json.autoUploadThumbnail ?? true);
         setAccounts(json.accounts || []);
+        if (json.logoBase64) {
+          setLogoBase64(json.logoBase64);
+        }
         if (json.nepaliDateToday) {
           setNepaliDate(json.nepaliDateToday);
         }
@@ -136,8 +140,9 @@ export default function ThumbnailStudioPage() {
       topic: customTopic || "Class Session",
       teachers: currentSubjectTeachers,
       nepaliDateStr: nepaliDate,
+      logoPath: logoBase64 || undefined,
     });
-  }, [previewTemplateId, selectedSubject, customTopic, currentSubjectTeachers, nepaliDate]);
+  }, [previewTemplateId, selectedSubject, customTopic, currentSubjectTeachers, nepaliDate, logoBase64]);
 
   // Set selected template as ACTIVE for YouTube
   const handleSetActiveTemplate = async (templateId: ThumbnailTemplateId) => {
@@ -173,10 +178,68 @@ export default function ThumbnailStudioPage() {
     } catch {}
   };
 
-  // Download high-res PNG
+  // Download high-res PNG using browser native text & ligature shaper (with server fallback)
   const handleDownloadPng = async () => {
     setDownloadingPng(true);
     try {
+      // 1. Generate full-resolution 1280x720 SVG
+      const svg = generateThumbnailSvg({
+        templateId: previewTemplateId,
+        subject: selectedSubject,
+        topic: customTopic || "Class Session",
+        teachers: currentSubjectTeachers,
+        nepaliDateStr: nepaliDate,
+        logoPath: logoBase64 || undefined,
+      });
+
+      const safeSubject = selectedSubject.replace(/[^a-zA-Z0-9_\u0900-\u097F-]/g, "_");
+      const safeTopic = (customTopic || "session").slice(0, 35).replace(/[^a-zA-Z0-9_\u0900-\u097F-]/g, "_");
+      const downloadFilename = `${safeSubject}_${safeTopic}_thumbnail.png`;
+
+      // 2. Client-side canvas export: uses browser native HarfBuzz for 100% authentic Devanagari ligatures
+      let renderedPngUrl = "";
+      try {
+        if (typeof document !== "undefined" && document.fonts) {
+          await document.fonts.ready;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas 2D context not available");
+
+        // Encode SVG as UTF-8 safe base64
+        const svgBase64 = "data:image/svg+xml;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(svg)));
+
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, 1280, 720);
+            resolve();
+          };
+          img.onerror = () => reject(new Error("SVG image load failed on canvas"));
+          img.src = svgBase64;
+        });
+
+        renderedPngUrl = canvas.toDataURL("image/png");
+      } catch (canvasErr) {
+        console.warn("Client canvas render failed, falling back to server API:", canvasErr);
+      }
+
+      // If client canvas succeeded, trigger download immediately
+      if (renderedPngUrl) {
+        const a = document.createElement("a");
+        a.href = renderedPngUrl;
+        a.download = downloadFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      // Fallback: server API
       const res = await fetch("/api/zoom-youtube/thumbnails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,11 +256,16 @@ export default function ThumbnailStudioPage() {
       if (json.success && json.base64) {
         const a = document.createElement("a");
         a.href = json.base64;
-        a.download = `${selectedSubject}_${customTopic.slice(0, 20)}_thumbnail.png`.replace(/\s+/g, "_");
+        a.download = downloadFilename;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+      } else {
+        throw new Error(json.error || "Failed to render thumbnail");
       }
-    } catch (err) {
-      alert("Failed to download thumbnail PNG");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to download thumbnail PNG";
+      alert(msg);
     } finally {
       setDownloadingPng(false);
     }

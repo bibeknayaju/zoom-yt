@@ -24,8 +24,10 @@ import {
   ChevronUp,
   Activity,
   Layers,
+  Zap,
 } from "lucide-react";
 import { useUploadQueue } from "@/lib/upload-queue-store";
+import { AutopilotRunRecord } from "@/lib/autopilot";
 
 export interface ActivityLogItem {
   id: string;
@@ -61,6 +63,13 @@ export default function ActivityLogsPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [clearing, setClearing] = useState<boolean>(false);
 
+  // Tabs: Video Processing Logs vs Auto-Pilot Discovery Runs
+  type ActivityTab = "videos" | "autopilot";
+  const [activeTab, setActiveTab] = useState<ActivityTab>("videos");
+  const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRunRecord[]>([]);
+  const [loadingAutopilot, setLoadingAutopilot] = useState<boolean>(false);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -68,6 +77,36 @@ export default function ActivityLogsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+
+  // Check URL tab query param
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("tab") === "autopilot") {
+        setActiveTab("autopilot");
+      }
+    }
+  }, []);
+
+  // Fetch Auto-Pilot Runs
+  const fetchAutopilotRuns = useCallback(async () => {
+    setLoadingAutopilot(true);
+    try {
+      const res = await fetch("/api/zoom-youtube/autopilot");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.runs)) {
+        setAutopilotRuns(json.runs);
+      }
+    } catch (err) {
+      console.error("Failed to load autopilot runs:", err);
+    } finally {
+      setLoadingAutopilot(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAutopilotRuns();
+  }, [fetchAutopilotRuns]);
 
   // Shared Upload Queue store
   const {
@@ -272,15 +311,18 @@ export default function ActivityLogsPage() {
             {/* Refresh button */}
             <button
               type="button"
-              onClick={() => fetchLogs(currentPage, pageSize, statusFilter, searchQuery)}
-              disabled={loading}
+              onClick={() => {
+                fetchLogs(currentPage, pageSize, statusFilter, searchQuery);
+                fetchAutopilotRuns();
+              }}
+              disabled={loading || loadingAutopilot}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-black hover:bg-slate-100 dark:hover:bg-zinc-850 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-sm transition disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-blue-500" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading || loadingAutopilot ? "animate-spin text-blue-500" : ""}`} />
               <span>Refresh</span>
             </button>
 
             {/* Clear logs */}
-            {userRole === "admin" && (
+            {userRole === "admin" && activeTab === "videos" && (
               <button
                 type="button"
                 onClick={handleClearLogs}
@@ -293,8 +335,52 @@ export default function ActivityLogsPage() {
           </div>
         </div>
 
-        {/* Main Card with Toolbar & Table */}
-        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
+        {/* Segmented Tab Switcher */}
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab("videos")}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+              activeTab === "videos"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+            }`}>
+            <History className="w-3.5 h-3.5" />
+            <span>Video Processing &amp; YouTube Logs</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                activeTab === "videos"
+                  ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                  : "bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
+              }`}>
+              {totalCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("autopilot")}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+              activeTab === "autopilot"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+            }`}>
+            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            <span>Auto-Pilot Discovery Runs</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                activeTab === "autopilot"
+                  ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                  : "bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
+              }`}>
+              {autopilotRuns.length}
+            </span>
+          </button>
+        </div>
+
+        {activeTab === "videos" ? (
+          /* Main Card with Toolbar & Table (Video Processing Logs) */
+          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
           {/* Controls / Filter Bar */}
           <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/80 dark:bg-black">
             {/* Search Input */}
@@ -582,6 +668,220 @@ export default function ActivityLogsPage() {
             disabled={loading}
           />
         </div>
+      ) : (
+        /* Main Card: Auto-Pilot Discovery Runs */
+        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
+          {/* Header Bar */}
+          <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 dark:bg-black">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Auto-Pilot Discovery &amp; Batch Runs
+              </h3>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
+                {autopilotRuns.length} recorded runs
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Scans all active Zoom accounts strictly for today&apos;s classes in Nepal Time.
+            </p>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            {loadingAutopilot ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+                <p className="text-xs text-slate-500 dark:text-zinc-400">Loading discovery run history...</p>
+              </div>
+            ) : autopilotRuns.length === 0 ? (
+              <div className="text-center py-16 px-4 space-y-2">
+                <p className="text-sm font-semibold text-slate-700 dark:text-zinc-300">
+                  No Auto-Pilot Runs Logged Yet
+                </p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Runs will appear here automatically when the scheduled cloud runner or manual trigger scans Zoom.
+                </p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
+                <thead className="bg-slate-50/90 dark:bg-zinc-900/60 border-b border-slate-200 dark:border-zinc-800 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400">
+                  <tr>
+                    <th className="py-3 px-4">Run Time (NPT)</th>
+                    <th className="py-3 px-4">Runner &amp; Trigger</th>
+                    <th className="py-3 px-4">Scan Window</th>
+                    <th className="py-3 px-4">Accounts</th>
+                    <th className="py-3 px-4">Classes Discovered</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-zinc-850">
+                  {autopilotRuns.map((run) => (
+                    <React.Fragment key={run.id}>
+                      <tr className="hover:bg-slate-50/60 dark:hover:bg-zinc-900/40 transition">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                          {new Date(run.runAt).toLocaleString("en-US", {
+                            timeZone: "Asia/Kathmandu",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}{" "}
+                          NPT
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-semibold text-slate-800 dark:text-zinc-200 truncate max-w-[180px]">
+                            {run.runnerLabel}
+                          </div>
+                          <div className="text-[10px] text-slate-500 dark:text-zinc-400">
+                            {run.triggerSource}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-700 dark:text-zinc-300 whitespace-nowrap">
+                          {run.scanWindow}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-800 dark:text-zinc-200">
+                          {run.accountsScanned} accounts
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {run.totalFound} found
+                            </span>
+                            <span className="text-slate-400">•</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                              {run.alreadyUploadedCount} uploaded
+                            </span>
+                            {run.newlyQueuedCount > 0 && (
+                              <>
+                                <span className="text-slate-400">•</span>
+                                <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                                  {run.newlyQueuedCount} queued
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <p
+                            className="text-[10px] text-slate-500 dark:text-zinc-400 truncate max-w-xs"
+                            title={run.summary}>
+                            {run.summary}
+                          </p>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              run.status === "success"
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                                : run.status === "running"
+                                ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                                : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                            }`}>
+                            {run.status === "success" && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                            {run.status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {run.status.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {run.items && run.items.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedRunId(expandedRunId === run.id ? null : run.id)
+                              }
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white">
+                              <span>
+                                {expandedRunId === run.id
+                                  ? "Hide"
+                                  : `Classes (${run.items.length})`}
+                              </span>
+                              {expandedRunId === run.id ? (
+                                <ChevronUp className="w-3 h-3" />
+                              ) : (
+                                <ChevronDown className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Expandable Class Breakdown */}
+                      {expandedRunId === run.id && run.items && (
+                        <tr className="bg-slate-50/70 dark:bg-zinc-950/80">
+                          <td
+                            colSpan={7}
+                            className="p-4 border-t border-b border-slate-200 dark:border-zinc-800">
+                            <div className="space-y-2">
+                              <h5 className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-zinc-400">
+                                Discovered Classes for this Run
+                              </h5>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {run.items.map((it, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="p-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black flex flex-col justify-between gap-2 shadow-xs">
+                                    <div>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="px-1.5 py-0.5 rounded font-bold text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
+                                          {it.accountName}
+                                        </span>
+                                        <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                                          {it.durationMinutes} min
+                                        </span>
+                                      </div>
+                                      <p className="font-semibold text-xs text-slate-900 dark:text-white mt-1">
+                                        {it.topic}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-zinc-900 text-[11px]">
+                                      <span className="text-slate-500 dark:text-zinc-400">
+                                        {new Date(it.startTime).toLocaleString("en-US", {
+                                          timeZone: "Asia/Kathmandu",
+                                          month: "short",
+                                          day: "numeric",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                          hour12: true,
+                                        })}{" "}
+                                        NPT
+                                      </span>
+
+                                      {it.status === "already_uploaded" && it.youtubeUrl ? (
+                                        <a
+                                          href={it.youtubeUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 hover:underline">
+                                          <span>Watch on YouTube</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      ) : it.status === "queued" ? (
+                                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                          Queued for upload
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500">{it.status}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Floating Upload Queue Drawer */}
       <UploadQueueDrawer

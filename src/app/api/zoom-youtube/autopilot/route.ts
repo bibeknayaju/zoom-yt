@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
     const { data: settingsRow } = await supabase.from("zy_settings").select("*").eq("id", "default").maybeSingle();
     const templateData = (settingsRow?.template_data as any) || {};
     const autopilotConfig = templateData.autopilot || {};
+    const autopilotRuns = templateData.autopilot_runs || [];
 
     const { count: activeAccountsCount } = await supabase
       .from("zy_zoom_accounts")
@@ -123,6 +124,7 @@ export async function GET(req: NextRequest) {
         lastRunQueuedCount: autopilotConfig.lastRunQueuedCount || 0,
         lastRunUploadedCount: autopilotConfig.lastRunUploadedCount || 0,
       },
+      runs: autopilotRuns,
       nextRunNpt: getNextScheduledRunNpt(),
       activeAccountsCount: activeAccountsCount || 0,
       queuedRecordingsCount: queuedRecordingsCount || 0,
@@ -229,8 +231,11 @@ export async function POST(req: NextRequest) {
 
 // Internal helper to run the discovery & cloud workflow dispatch
 async function executeAutopilotBatch(supabase: SupabaseClient, reason: string) {
-  const todayNepal = getNepalDateString();
-  const discovery = await runAutopilotDiscovery(supabase, todayNepal);
+  const isCron = reason.toLowerCase().includes("cron");
+  const discovery = await runAutopilotDiscovery(supabase, {
+    triggerSource: isCron ? "scheduled_cron" : "ui_manual",
+    runnerLabel: isCron ? "Automated Cron Trigger" : "Dashboard UI Trigger",
+  });
 
   const { count: queuedCount } = await supabase
     .from("zy_recordings")
@@ -240,10 +245,10 @@ async function executeAutopilotBatch(supabase: SupabaseClient, reason: string) {
 
   const totalToProcess = queuedCount ?? discovery.newlyQueuedCount;
 
-  let workflowResult = { triggered: false, message: "No un-uploaded classes found for today." };
+  let workflowResult = { triggered: false, message: "No un-uploaded classes found." };
   if (totalToProcess > 0) {
     workflowResult = await triggerGitHubWorkflow(
-      `${reason} (${totalToProcess} class(es) for ${todayNepal} NPT)`
+      `${reason} (${totalToProcess} class(es) for ${discovery.scanWindow})`
     );
   }
 
@@ -251,13 +256,23 @@ async function executeAutopilotBatch(supabase: SupabaseClient, reason: string) {
   try {
     const { data: settingsRow } = await supabase.from("zy_settings").select("*").eq("id", "default").maybeSingle();
     const templateData = (settingsRow?.template_data as any) || {};
+    const runs: any[] = Array.isArray(templateData.autopilot_runs) ? templateData.autopilot_runs : [];
+
+    const status = workflowResult.triggered ? "running" : totalToProcess === 0 ? "success" : "failed";
+    const message = workflowResult.triggered
+      ? `Discovered ${discovery.totalDiscoveredToday} classes (${discovery.newlyQueuedCount} newly queued, ${discovery.alreadyUploadedCount} already uploaded). Cloud Runner started!`
+      : `Discovered ${discovery.totalDiscoveredToday} classes. All are already uploaded to YouTube.`;
+
+    if (runs.length > 0 && discovery.runRecord && runs[0].id === discovery.runRecord.id) {
+      runs[0].status = status;
+      runs[0].summary = message;
+    }
+
     const nextAutopilot = {
       ...(templateData.autopilot || {}),
       lastRunAt: new Date().toISOString(),
-      lastRunStatus: workflowResult.triggered ? "running" : totalToProcess === 0 ? "success" : "failed",
-      lastRunMessage: workflowResult.triggered
-        ? `Found ${discovery.totalDiscoveredToday} classes for today (${discovery.newlyQueuedCount} newly queued, ${discovery.alreadyUploadedCount} already uploaded). Cloud Runner started!`
-        : `Found ${discovery.totalDiscoveredToday} classes for today. All are already uploaded to YouTube.`,
+      lastRunStatus: status,
+      lastRunMessage: message,
       lastRunDiscoveredCount: discovery.totalDiscoveredToday,
       lastRunQueuedCount: discovery.newlyQueuedCount,
       lastRunUploadedCount: discovery.alreadyUploadedCount,
@@ -269,6 +284,7 @@ async function executeAutopilotBatch(supabase: SupabaseClient, reason: string) {
         template_data: {
           ...templateData,
           autopilot: nextAutopilot,
+          autopilot_runs: runs,
         },
         updated_at: new Date().toISOString(),
       })
@@ -278,6 +294,7 @@ async function executeAutopilotBatch(supabase: SupabaseClient, reason: string) {
   return NextResponse.json({
     success: true,
     scanDateNepal: discovery.scanDateNepal,
+    scanWindow: discovery.scanWindow,
     activeAccountsCount: discovery.activeAccountsCount,
     totalDiscoveredToday: discovery.totalDiscoveredToday,
     newlyQueuedCount: discovery.newlyQueuedCount,

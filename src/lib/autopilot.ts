@@ -21,14 +21,49 @@ export interface DiscoveredClassRecording {
   recordingType?: string;
 }
 
+export interface AutopilotDiscoveredItem {
+  accountName: string;
+  topic: string;
+  fileId: string;
+  startTime: string;
+  durationMinutes: number;
+  fileSizeBytes: number;
+  status: "queued" | "already_uploaded" | "already_queued";
+  youtubeUrl?: string;
+}
+
+export interface AutopilotRunRecord {
+  id: string;
+  runAt: string;
+  triggerSource: "github_cloud_worker" | "ui_manual" | "scheduled_cron";
+  runnerLabel: string;
+  scanWindow: string;
+  accountsScanned: number;
+  totalFound: number;
+  newlyQueuedCount: number;
+  alreadyUploadedCount: number;
+  alreadyQueuedCount: number;
+  status: "success" | "running" | "failed" | "partial";
+  summary: string;
+  items: AutopilotDiscoveredItem[];
+}
+
 export interface AutopilotScanResult {
   scanDateNepal: string;
+  scanWindow: string;
   activeAccountsCount: number;
   totalDiscoveredToday: number;
   newlyQueuedCount: number;
   alreadyUploadedCount: number;
   alreadyQueuedCount: number;
   queuedRecordings: DiscoveredClassRecording[];
+  runRecord?: AutopilotRunRecord;
+}
+
+export interface AutopilotDiscoveryOptions {
+  targetDateNepal?: string;
+  triggerSource?: "github_cloud_worker" | "ui_manual" | "scheduled_cron";
+  runnerLabel?: string;
 }
 
 /**
@@ -44,7 +79,7 @@ export function getNepalDateString(date = new Date()): string {
 }
 
 /**
- * Checks if a recording took place on target Nepal date (ignores yesterday or older)
+ * Strictly checks if a recording took place on today's date in Nepal Time (ignores yesterday or older)
  */
 export function isRecordedOnDateInNepal(
   startTimeIso: string,
@@ -64,15 +99,80 @@ export function isRecordedOnDateInNepal(
 }
 
 /**
- * Scans all active Zoom accounts for today's recordings and queues any un-uploaded videos.
+ * Saves a detailed Autopilot Run Record to Supabase (zy_settings.template_data.autopilot_runs)
+ */
+export async function saveAutopilotRunRecord(
+  supabase: SupabaseClient,
+  runRecord: AutopilotRunRecord
+): Promise<void> {
+  try {
+    const { data: settingsRow } = await supabase
+      .from("zy_settings")
+      .select("template_data")
+      .eq("id", "default")
+      .maybeSingle();
+
+    const templateData = (settingsRow?.template_data as any) || {};
+    const existingRuns: AutopilotRunRecord[] = Array.isArray(templateData.autopilot_runs)
+      ? templateData.autopilot_runs
+      : [];
+
+    // Filter out if duplicate ID exists, prepend new run, keep last 50
+    const updatedRuns = [runRecord, ...existingRuns.filter((r) => r.id !== runRecord.id)].slice(0, 50);
+
+    const nextAutopilot = {
+      ...(templateData.autopilot || {}),
+      lastRunAt: runRecord.runAt,
+      lastRunStatus: runRecord.status,
+      lastRunMessage: runRecord.summary,
+      lastRunDiscoveredCount: runRecord.totalFound,
+      lastRunQueuedCount: runRecord.newlyQueuedCount,
+      lastRunUploadedCount: runRecord.alreadyUploadedCount,
+    };
+
+    await supabase
+      .from("zy_settings")
+      .update({
+        template_data: {
+          ...templateData,
+          autopilot: nextAutopilot,
+          autopilot_runs: updatedRuns,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", "default");
+  } catch (err) {
+    console.warn("⚠️ [Auto-Pilot] Failed to persist run record:", err);
+  }
+}
+
+/**
+ * Scans all active Zoom accounts strictly for TODAY'S recordings in Nepal Time (no yesterday)
+ * and queues any un-uploaded classes for automated processing.
  */
 export async function runAutopilotDiscovery(
   supabase: SupabaseClient,
-  targetDateNepal = getNepalDateString()
+  optionsOrDate?: string | AutopilotDiscoveryOptions
 ): Promise<AutopilotScanResult> {
+  let targetDateNepal = getNepalDateString();
+  let triggerSource: "github_cloud_worker" | "ui_manual" | "scheduled_cron" = "scheduled_cron";
+  let runnerLabel = "GitHub Cloud Runner";
+
+  if (typeof optionsOrDate === "string") {
+    targetDateNepal = optionsOrDate;
+  } else if (optionsOrDate && typeof optionsOrDate === "object") {
+    if (optionsOrDate.targetDateNepal) {
+      targetDateNepal = optionsOrDate.targetDateNepal;
+    }
+    if (optionsOrDate.triggerSource) triggerSource = optionsOrDate.triggerSource;
+    if (optionsOrDate.runnerLabel) runnerLabel = optionsOrDate.runnerLabel;
+  }
+
+  const scanWindowText = `${targetDateNepal} (NPT - Today Only)`;
+
   console.log(`\n=======================================================`);
   console.log(`🔍 [Auto-Pilot Discovery] Scanning Active Zoom Accounts`);
-  console.log(`📅 Target Date (Nepal Time): ${targetDateNepal}`);
+  console.log(`📅 Target Date (Nepal Time): ${targetDateNepal} (Today Only)`);
   console.log(`=======================================================`);
 
   // 1. Fetch all active Zoom accounts
@@ -91,6 +191,7 @@ export async function runAutopilotDiscovery(
   if (activeAccounts.length === 0) {
     return {
       scanDateNepal: targetDateNepal,
+      scanWindow: scanWindowText,
       activeAccountsCount: 0,
       totalDiscoveredToday: 0,
       newlyQueuedCount: 0,
@@ -100,7 +201,7 @@ export async function runAutopilotDiscovery(
     };
   }
 
-  // Calculate UTC query window (from yesterday UTC to today UTC to safely cover Nepal UTC+5:45)
+  // Calculate UTC query window (from yesterday UTC to today UTC to safely cover Nepal UTC+5:45 timezone boundary)
   const toDateUtc = new Date().toISOString().split("T")[0];
   const fromDateUtcObj = new Date();
   fromDateUtcObj.setDate(fromDateUtcObj.getDate() - 1);
@@ -183,7 +284,7 @@ export async function runAutopilotDiscovery(
             mp4Files.forEach((file: any, index: number) => {
               const startTime = file.recording_start || m.start_time;
 
-              // STRICT FILTER: Only include recordings from TODAY in Nepal Time!
+              // STRICT FILTER: ONLY include recordings from TODAY in Nepal Time!
               // (Ignores yesterday's or older recordings)
               if (!isRecordedOnDateInNepal(startTime, targetDateNepal)) {
                 return;
@@ -232,18 +333,6 @@ export async function runAutopilotDiscovery(
 
   console.log(`\n📋 Found ${candidateRecordings.length} total recording(s) for today (${targetDateNepal} NPT).`);
 
-  if (candidateRecordings.length === 0) {
-    return {
-      scanDateNepal: targetDateNepal,
-      activeAccountsCount: activeAccounts.length,
-      totalDiscoveredToday: 0,
-      newlyQueuedCount: 0,
-      alreadyUploadedCount: 0,
-      alreadyQueuedCount: 0,
-      queuedRecordings: [],
-    };
-  }
-
   // 3. Cross-reference with existing database records to avoid duplicate processing
   const fileIds = candidateRecordings.map((r) => r.fileId);
   const { data: dbRecords } = await supabase
@@ -254,6 +343,7 @@ export async function runAutopilotDiscovery(
   const dbMap = new Map((dbRecords || []).map((d: any) => [d.zoom_file_id, d]));
 
   const toQueue: DiscoveredClassRecording[] = [];
+  const discoveredItems: AutopilotDiscoveredItem[] = [];
   let alreadyUploadedCount = 0;
   let alreadyQueuedCount = 0;
 
@@ -262,14 +352,42 @@ export async function runAutopilotDiscovery(
     if (existing) {
       if (existing.status === "uploaded" || existing.youtube_url) {
         alreadyUploadedCount++;
+        discoveredItems.push({
+          accountName: rec.accountName,
+          topic: rec.topic,
+          fileId: rec.fileId,
+          startTime: rec.startTime,
+          durationMinutes: rec.durationMinutes,
+          fileSizeBytes: rec.fileSizeBytes,
+          status: "already_uploaded",
+          youtubeUrl: existing.youtube_url || undefined,
+        });
         continue;
       }
       if (existing.status === "queued" || existing.status === "downloading" || existing.status === "watermarking") {
         alreadyQueuedCount++;
+        discoveredItems.push({
+          accountName: rec.accountName,
+          topic: rec.topic,
+          fileId: rec.fileId,
+          startTime: rec.startTime,
+          durationMinutes: rec.durationMinutes,
+          fileSizeBytes: rec.fileSizeBytes,
+          status: "already_queued",
+        });
         continue;
       }
     }
     toQueue.push(rec);
+    discoveredItems.push({
+      accountName: rec.accountName,
+      topic: rec.topic,
+      fileId: rec.fileId,
+      startTime: rec.startTime,
+      durationMinutes: rec.durationMinutes,
+      fileSizeBytes: rec.fileSizeBytes,
+      status: "queued",
+    });
   }
 
   console.log(`📊 Auto-Pilot Filter Status:`);
@@ -305,13 +423,39 @@ export async function runAutopilotDiscovery(
     }
   }
 
+  // 5. Create and persist the Autopilot Run Record for dashboard history
+  const runRecord: AutopilotRunRecord = {
+    id: `apr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    runAt: new Date().toISOString(),
+    triggerSource,
+    runnerLabel,
+    scanWindow: scanWindowText,
+    accountsScanned: activeAccounts.length,
+    totalFound: candidateRecordings.length,
+    newlyQueuedCount: toQueue.length,
+    alreadyUploadedCount,
+    alreadyQueuedCount,
+    status: toQueue.length > 0 ? "running" : "success",
+    summary:
+      candidateRecordings.length === 0
+        ? `Scanned ${activeAccounts.length} accounts. 0 recordings found for today (${targetDateNepal} NPT).`
+        : toQueue.length > 0
+        ? `Discovered ${candidateRecordings.length} classes for today (${toQueue.length} newly queued for upload, ${alreadyUploadedCount} already uploaded).`
+        : `Scanned ${activeAccounts.length} accounts for today. All ${candidateRecordings.length} classes are already uploaded to YouTube.`,
+    items: discoveredItems,
+  };
+
+  await saveAutopilotRunRecord(supabase, runRecord);
+
   return {
     scanDateNepal: targetDateNepal,
+    scanWindow: scanWindowText,
     activeAccountsCount: activeAccounts.length,
     totalDiscoveredToday: candidateRecordings.length,
     newlyQueuedCount: toQueue.length,
     alreadyUploadedCount,
     alreadyQueuedCount,
     queuedRecordings: toQueue,
+    runRecord,
   };
 }

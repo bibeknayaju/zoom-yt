@@ -110,6 +110,22 @@ async function runBatch() {
   const storage = await checkDeviceStorage({ criticalThresholdGB: 2 });
   console.log(`💾 Runner Free Disk Space: ${storage.freeGB} GB (${storage.status.toUpperCase()})`);
 
+  // Check Discord Webhook readiness
+  try {
+    const { data: settingsRow } = await supabase
+      .from("zy_settings")
+      .select("template_data")
+      .eq("id", "default")
+      .maybeSingle();
+    const dbWebhook = (settingsRow?.template_data as any)?.autopilot?.discordWebhookUrl;
+    const effectiveWebhook = process.env.DISCORD_WEBHOOK_URL || dbWebhook;
+    if (effectiveWebhook && effectiveWebhook.trim()) {
+      console.log(`📢 Discord Notifications: ENABLED (Webhook connected)`);
+    } else {
+      console.log(`ℹ️ Discord Notifications: DISABLED (No webhook URL configured in settings)`);
+    }
+  } catch {}
+
   await sendHeartbeat();
   const heartbeatTimer = setInterval(sendHeartbeat, 30000);
 
@@ -118,12 +134,17 @@ async function runBatch() {
   let failCount = 0;
 
   // 0. Auto-Pilot Discovery: automatically scan all active Zoom accounts for today's classes
+  let autopilotRunId: string | undefined;
   try {
-    const discovery = await runAutopilotDiscovery(supabase);
+    const discovery = await runAutopilotDiscovery(supabase, {
+      triggerSource: "github_cloud_worker",
+      runnerLabel: process.env.WORKER_NODE_LABEL || "GitHub Actions Cloud Runner",
+    });
+    autopilotRunId = discovery.runRecord?.id;
     if (discovery.newlyQueuedCount > 0) {
       console.log(`\n🚀 [Auto-Pilot] Automatically discovered & queued ${discovery.newlyQueuedCount} new class(es) for today (${discovery.scanDateNepal} NPT).`);
     } else {
-      console.log(`\nℹ️ [Auto-Pilot] Today's scan complete (${discovery.scanDateNepal} NPT): ${discovery.alreadyUploadedCount} already uploaded/active, 0 new un-uploaded classes.`);
+      console.log(`\nℹ️ [Auto-Pilot] Scan complete for today (${discovery.scanDateNepal} NPT): ${discovery.alreadyUploadedCount} already uploaded/active, 0 new un-uploaded classes.`);
     }
   } catch (discErr) {
     console.warn(`⚠️ [Auto-Pilot] Notice during discovery scan:`, discErr);
@@ -328,7 +349,7 @@ async function runBatch() {
 
           // Dispatch Discord Success Notification per video
           try {
-            await sendDiscordVideoSuccess({
+            const sent = await sendDiscordVideoSuccess({
               topic: job.topic,
               hostName: zoomAccount.account_name,
               accountName: zoomAccount.account_name,
@@ -339,7 +360,11 @@ async function runBatch() {
               youtubeVideoId: result.youtubeVideoId,
               resolution: watermarkOpts.resolution,
             });
-            console.log(`📢 [Discord] Successfully dispatched live notification to Discord channel.`);
+            if (sent) {
+              console.log(`📢 [Discord] Successfully dispatched live notification to Discord channel.`);
+            } else {
+              console.log(`ℹ️ [Discord] Notification skipped (no webhook URL configured or delivery failed).`);
+            }
           } catch (discordErr) {
             console.warn(`⚠️ [Discord] Webhook notification warning:`, discordErr);
           }
@@ -417,6 +442,39 @@ async function runBatch() {
   console.log(`   Successful:      ${successCount}`);
   console.log(`   Failed:          ${failCount}`);
   console.log("=======================================================\n");
+
+  // Update the Autopilot run record status in zy_settings
+  if (autopilotRunId) {
+    try {
+      const { data: settingsRow } = await supabase
+        .from("zy_settings")
+        .select("template_data")
+        .eq("id", "default")
+        .maybeSingle();
+
+      const templateData = (settingsRow?.template_data as any) || {};
+      const runs: any[] = Array.isArray(templateData.autopilot_runs) ? templateData.autopilot_runs : [];
+      const runIdx = runs.findIndex((r) => r.id === autopilotRunId);
+      if (runIdx >= 0) {
+        runs[runIdx].status = failCount > 0 ? (successCount > 0 ? "partial" : "failed") : "success";
+        runs[runIdx].summary = `Batch finished: ${processedCount} processed (${successCount} uploaded successfully, ${failCount} failed).`;
+
+        const nextAutopilot = {
+          ...(templateData.autopilot || {}),
+          lastRunStatus: runs[runIdx].status,
+          lastRunMessage: runs[runIdx].summary,
+        };
+
+        await supabase
+          .from("zy_settings")
+          .update({
+            template_data: { ...templateData, autopilot: nextAutopilot, autopilot_runs: runs },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", "default");
+      }
+    } catch {}
+  }
 
   process.exit(failCount > 0 && successCount === 0 && processedCount > 0 ? 1 : 0);
 }

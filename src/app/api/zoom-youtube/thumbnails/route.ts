@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
       accounts: formattedAccounts,
       subjectsConfig,
       nepaliDateToday: formatNepaliBikramSambat(new Date()),
+      logoBase64: getLocalLogoBase64(),
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
