@@ -2,14 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { runAutopilotDiscovery, getNepalDateString } from "@/lib/autopilot";
 import { triggerGitHubWorkflow } from "@/lib/github-actions";
-import { sendDiscordVideoSuccess } from "@/lib/discord";
+import {
+  sendDiscordVideoSuccess,
+  sendDiscordAutopilotNoVideos,
+} from "@/lib/discord";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function getSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   return createClient(url, key);
 }
@@ -24,8 +29,14 @@ function getNextScheduledRunNpt(): string {
       hour12: false,
     });
     const parts = nptFormatter.formatToParts(now);
-    const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
-    const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+    const hour = parseInt(
+      parts.find((p) => p.type === "hour")?.value || "0",
+      10,
+    );
+    const minute = parseInt(
+      parts.find((p) => p.type === "minute")?.value || "0",
+      10,
+    );
     const currentMinutes = hour * 60 + minute;
 
     const morningMinutes = 7 * 60; // 07:00 (420 min)
@@ -50,14 +61,17 @@ async function getLatestWorkflowRun() {
   if (!token) return null;
 
   try {
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${token.trim()}`,
-        "User-Agent": "Zoom-YouTube-Studio",
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token.trim()}`,
+          "User-Agent": "Zoom-YouTube-Studio",
+        },
+        next: { revalidate: 15 },
       },
-      next: { revalidate: 15 },
-    });
+    );
     if (!res.ok) return null;
     const data = await res.json();
     const latest = data.workflow_runs?.[0];
@@ -80,19 +94,31 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabase();
     if (!supabase) {
-      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Database not configured" },
+        { status: 500 },
+      );
     }
 
     const { searchParams } = new URL(req.url);
-    const isCronExecution = searchParams.get("cron") === "true" || searchParams.get("trigger") === "true";
+    const isCronExecution =
+      searchParams.get("cron") === "true" ||
+      searchParams.get("trigger") === "true";
 
     // If external cron service calls this URL to trigger the batch run:
     if (isCronExecution) {
-      return await executeAutopilotBatch(supabase, "External Cron Schedule Trigger");
+      return await executeAutopilotBatch(
+        supabase,
+        "External Cron Schedule Trigger",
+      );
     }
 
     // Otherwise, return full Auto-Pilot UI status & settings
-    const { data: settingsRow } = await supabase.from("zy_settings").select("*").eq("id", "default").maybeSingle();
+    const { data: settingsRow } = await supabase
+      .from("zy_settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
     const templateData = (settingsRow?.template_data as any) || {};
     const autopilotConfig = templateData.autopilot || {};
     const autopilotRuns = templateData.autopilot_runs || [];
@@ -116,7 +142,10 @@ export async function GET(req: NextRequest) {
         enabled: autopilotConfig.enabled ?? true,
         morningScheduleNpt: autopilotConfig.morningScheduleNpt || "07:00 AM",
         eveningScheduleNpt: autopilotConfig.eveningScheduleNpt || "11:00 PM",
-        discordWebhookUrl: autopilotConfig.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL || "",
+        discordWebhookUrl:
+          autopilotConfig.discordWebhookUrl ||
+          process.env.DISCORD_WEBHOOK_URL ||
+          "",
         lastRunAt: autopilotConfig.lastRunAt || null,
         lastRunStatus: autopilotConfig.lastRunStatus || "idle",
         lastRunMessage: autopilotConfig.lastRunMessage || null,
@@ -141,18 +170,28 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = getSupabase();
     if (!supabase) {
-      return NextResponse.json({ success: false, error: "Database not configured" }, { status: 500 });
+      return NextResponse.json(
+        { success: false, error: "Database not configured" },
+        { status: 500 },
+      );
     }
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || "trigger";
 
     if (action === "trigger") {
-      return await executeAutopilotBatch(supabase, body.reason || "Manual UI trigger from Dashboard");
+      return await executeAutopilotBatch(
+        supabase,
+        body.reason || "Manual UI trigger from Dashboard",
+      );
     }
 
     if (action === "toggle") {
-      const { data: settingsRow } = await supabase.from("zy_settings").select("*").eq("id", "default").maybeSingle();
+      const { data: settingsRow } = await supabase
+        .from("zy_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
       const templateData = (settingsRow?.template_data as any) || {};
       const nextAutopilot = {
         ...(templateData.autopilot || {}),
@@ -173,12 +212,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         enabled: nextAutopilot.enabled,
-        message: nextAutopilot.enabled ? "Auto-Pilot enabled successfully" : "Auto-Pilot paused",
+        message: nextAutopilot.enabled
+          ? "Auto-Pilot enabled successfully"
+          : "Auto-Pilot paused",
       });
     }
 
     if (action === "update_discord") {
-      const { data: settingsRow } = await supabase.from("zy_settings").select("*").eq("id", "default").maybeSingle();
+      const { data: settingsRow } = await supabase
+        .from("zy_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
       const templateData = (settingsRow?.template_data as any) || {};
       const nextAutopilot = {
         ...(templateData.autopilot || {}),
@@ -203,7 +248,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "test_discord") {
-      const webhookUrl = body.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
+      const webhookUrl =
+        body.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
       const sent = await sendDiscordVideoSuccess({
         topic: "Vidia Auto-Pilot Live Connection Test",
         hostName: "Union Education",
@@ -216,13 +262,25 @@ export async function POST(req: NextRequest) {
       });
 
       if (!sent) {
-        return NextResponse.json({ success: false, error: "Failed to send message to Discord webhook" }, { status: 400 });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Failed to send message to Discord webhook",
+          },
+          { status: 400 },
+        );
       }
 
-      return NextResponse.json({ success: true, message: "Test notification sent to Discord channel successfully!" });
+      return NextResponse.json({
+        success: true,
+        message: "Test notification sent to Discord channel successfully!",
+      });
     }
 
-    return NextResponse.json({ success: false, error: `Unknown action: ${action}` }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: `Unknown action: ${action}` },
+      { status: 400 },
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
@@ -245,25 +303,58 @@ async function executeAutopilotBatch(supabase: SupabaseClient, reason: string) {
 
   const totalToProcess = queuedCount ?? discovery.newlyQueuedCount;
 
-  let workflowResult = { triggered: false, message: "No un-uploaded classes found." };
+  let workflowResult = {
+    triggered: false,
+    message: "No un-uploaded classes found.",
+  };
   if (totalToProcess > 0) {
     workflowResult = await triggerGitHubWorkflow(
-      `${reason} (${totalToProcess} class(es) for ${discovery.scanWindow})`
+      `${reason} (${totalToProcess} class(es) for ${discovery.scanWindow})`,
     );
+  } else {
+    // If no new classes were discovered, send a Discord notification about zero videos found
+    try {
+      await sendDiscordAutopilotNoVideos({
+        scanWindow: discovery.scanWindow,
+        activeAccountsCount: discovery.activeAccountsCount,
+        totalFound: discovery.totalDiscoveredToday,
+        alreadyUploadedCount: discovery.alreadyUploadedCount,
+        zoomRenderingCount: discovery.runRecord?.zoomProcessingCount,
+      });
+    } catch (dErr) {
+      console.warn(
+        "⚠️ Failed to dispatch Discord zero-video notification:",
+        dErr,
+      );
+    }
   }
 
   // Update last run status in zy_settings
   try {
-    const { data: settingsRow } = await supabase.from("zy_settings").select("*").eq("id", "default").maybeSingle();
+    const { data: settingsRow } = await supabase
+      .from("zy_settings")
+      .select("*")
+      .eq("id", "default")
+      .maybeSingle();
     const templateData = (settingsRow?.template_data as any) || {};
-    const runs: any[] = Array.isArray(templateData.autopilot_runs) ? templateData.autopilot_runs : [];
+    const runs: any[] = Array.isArray(templateData.autopilot_runs)
+      ? templateData.autopilot_runs
+      : [];
 
-    const status = workflowResult.triggered ? "running" : totalToProcess === 0 ? "success" : "failed";
+    const status = workflowResult.triggered
+      ? "running"
+      : totalToProcess === 0
+        ? "success"
+        : "failed";
     const message = workflowResult.triggered
       ? `Discovered ${discovery.totalDiscoveredToday} classes (${discovery.newlyQueuedCount} newly queued, ${discovery.alreadyUploadedCount} already uploaded). Cloud Runner started!`
       : `Discovered ${discovery.totalDiscoveredToday} classes. All are already uploaded to YouTube.`;
 
-    if (runs.length > 0 && discovery.runRecord && runs[0].id === discovery.runRecord.id) {
+    if (
+      runs.length > 0 &&
+      discovery.runRecord &&
+      runs[0].id === discovery.runRecord.id
+    ) {
       runs[0].status = status;
       runs[0].summary = message;
     }

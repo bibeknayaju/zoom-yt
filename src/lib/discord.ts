@@ -291,3 +291,66 @@ export async function sendDiscordAutopilotSummary(
     params.webhookUrl
   );
 }
+
+/**
+ * Send Discord alert when Auto-Pilot scan finds NO new videos to upload.
+ * Confirms that GitHub runner was NOT triggered, saving workflow build minutes.
+ */
+export async function sendDiscordAutopilotNoVideos(params: {
+  scanWindow: string;
+  activeAccountsCount: number;
+  totalFound: number;
+  alreadyUploadedCount: number;
+  zoomRenderingCount?: number;
+  webhookUrl?: string;
+}): Promise<boolean> {
+  const isRendering = (params.zoomRenderingCount || 0) > 0;
+
+  const description = isRendering
+    ? `Scanned **${params.activeAccountsCount} Zoom accounts** for today (**${params.scanWindow}**).\n\n⏳ **${params.zoomRenderingCount} class is still being rendered/transcoded by Zoom cloud.** (Zoom takes ~30–45m after class ends). It will automatically queue on the next scheduled run.\n\n✨ **GitHub Actions runner was NOT started**, saving your workflow minutes!`
+    : `Scanned **${params.activeAccountsCount} Zoom accounts** for today (**${params.scanWindow}**).\n\n✨ No new un-uploaded classes found (${params.alreadyUploadedCount} already live on YouTube).\n\n🚀 **GitHub Actions runner was NOT started**, saving your workflow minutes!`;
+
+  const embed = {
+    title: isRendering ? "⏳ Auto-Pilot: Class Rendering in Zoom Cloud" : "✨ Auto-Pilot: No New Classes to Upload",
+    description,
+    color: isRendering ? 0xf59e0b : 0x64748b, // Amber or Slate
+    fields: [
+      {
+        name: "📅 Date Window",
+        value: params.scanWindow,
+        inline: true,
+      },
+      {
+        name: "🏢 Zoom Accounts",
+        value: `${params.activeAccountsCount} scanned`,
+        inline: true,
+      },
+      {
+        name: "📊 Classes Found Today",
+        value: `${params.totalFound} (${params.alreadyUploadedCount} uploaded)`,
+        inline: true,
+      },
+      ...(isRendering
+        ? [
+            {
+              name: "⏳ Zoom Cloud Status",
+              value: `${params.zoomRenderingCount} rendering`,
+              inline: true,
+            },
+          ]
+        : []),
+    ],
+    footer: {
+      text: "Vidia Auto-Pilot • 0 GitHub Runner Minutes Used",
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  return sendDiscordPayload(
+    {
+      username: "Vidia Auto-Pilot",
+      embeds: [embed],
+    },
+    params.webhookUrl
+  );
+}
