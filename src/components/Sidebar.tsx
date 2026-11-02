@@ -60,7 +60,7 @@ export function Sidebar({ onOpenQueue }: SidebarProps) {
       <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between">
         <Link href="/dashboard" className="group block">
           <div className="text-xl font-black tracking-tight text-slate-900 dark:text-white font-sans">
-            Vidia
+            VidShuttle
           </div>
           <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">Video Automation</p>
         </Link>

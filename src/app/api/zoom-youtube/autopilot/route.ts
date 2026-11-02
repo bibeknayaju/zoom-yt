@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
       const webhookUrl =
         body.discordWebhookUrl || process.env.DISCORD_WEBHOOK_URL;
       const sent = await sendDiscordVideoSuccess({
-        topic: "Vidia Auto-Pilot Live Connection Test",
+        topic: "VidShuttle Auto-Pilot Live Connection Test",
         hostName: "Union Education",
         accountName: "Discord Bot",
         durationMinutes: 45,

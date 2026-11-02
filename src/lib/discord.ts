@@ -1,5 +1,5 @@
 /**
- * Discord Webhook Notification Service for Vidia Auto-Pilot
+ * Discord Webhook Notification Service for VidShuttle Auto-Pilot
  *
  * Dispatches rich embedded notifications to Discord channels for class video
  * upload successes, processing failures, and daily auto-pilot runs.
@@ -181,14 +181,14 @@ export async function sendDiscordVideoSuccess(
       },
     ],
     footer: {
-      text: "Vidia Auto-Pilot • Cloud Pipeline",
+      text: "VidShuttle Auto-Pilot • Cloud Pipeline",
     },
     timestamp: new Date().toISOString(),
   };
 
   return sendDiscordPayload(
     {
-      username: "Vidia Auto-Pilot",
+      username: "VidShuttle Auto-Pilot",
       embeds: [embed],
     },
     params.webhookUrl
@@ -235,14 +235,14 @@ export async function sendDiscordVideoFailure(
       },
     ],
     footer: {
-      text: "Vidia Auto-Pilot • Alert",
+      text: "VidShuttle Auto-Pilot • Alert",
     },
     timestamp: new Date().toISOString(),
   };
 
   return sendDiscordPayload(
     {
-      username: "Vidia Auto-Pilot",
+      username: "VidShuttle Auto-Pilot",
       embeds: [embed],
     },
     params.webhookUrl
@@ -278,14 +278,14 @@ export async function sendDiscordAutopilotSummary(
       },
     ],
     footer: {
-      text: `Vidia Auto-Pilot • ${params.runLabel || "Scheduled Run"}`,
+      text: `VidShuttle Auto-Pilot • ${params.runLabel || "Scheduled Run"}`,
     },
     timestamp: new Date().toISOString(),
   };
 
   return sendDiscordPayload(
     {
-      username: "Vidia Auto-Pilot",
+      username: "VidShuttle Auto-Pilot",
       embeds: [embed],
     },
     params.webhookUrl
@@ -341,14 +341,14 @@ export async function sendDiscordAutopilotNoVideos(params: {
         : []),
     ],
     footer: {
-      text: "Vidia Auto-Pilot • 0 GitHub Runner Minutes Used",
+      text: "VidShuttle Auto-Pilot • 0 GitHub Runner Minutes Used",
     },
     timestamp: new Date().toISOString(),
   };
 
   return sendDiscordPayload(
     {
-      username: "Vidia Auto-Pilot",
+      username: "VidShuttle Auto-Pilot",
       embeds: [embed],
     },
     params.webhookUrl

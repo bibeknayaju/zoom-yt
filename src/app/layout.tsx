@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Vidia | Video Automation Studio",
+  title: "VidShuttle | Video Automation Studio",
   description: "Automated Zoom cloud recording discovery, watermarking, and YouTube distribution pipeline.",
 };
 

@@ -776,7 +776,7 @@ export default function ThumbnailStudioPage() {
                   Current Chapter / Topic for {editingAccountName}
                 </label>
                 <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                  When Zoom records a generic meeting room, Vidia automatically
+                  When Zoom records a generic meeting room, VidShuttle automatically
                   pulls this topic for thumbnails and titles.
                 </p>
                 <input

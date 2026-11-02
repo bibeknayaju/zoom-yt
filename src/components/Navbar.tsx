@@ -36,7 +36,7 @@ export function Navbar({ userRole = "user", userEmail, onOpenQueue }: NavbarProp
         <div className="flex items-center gap-3">
           <Link href="/dashboard" className="group">
             <div className="text-xl font-black text-white tracking-tight flex items-center gap-2 font-sans">
-              <span>Vidia</span>
+              <span>VidShuttle</span>
               <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
                 v2.0
               </span>

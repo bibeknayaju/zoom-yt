@@ -1,5 +1,5 @@
 /**
- * High-Converting 1280x720 YouTube Thumbnail Template Engine for Vidia
+ * High-Converting 1280x720 YouTube Thumbnail Template Engine for VidShuttle
  *
  * Supports 6 distinct modern styles with authentic Unicode Devanagari typography,
  * large prominent institutional logos, and intelligent 2-line title wrapping.

@@ -5,7 +5,7 @@ export default function SignInPage() {
     <div className="min-h-screen flex items-center justify-center bg-black p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-white tracking-tight">Vidia</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">VidShuttle</h1>
           <p className="text-xs text-slate-400 mt-1">
             Sign in with your team credentials to continue
           </p>

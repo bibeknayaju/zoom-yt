@@ -4,7 +4,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { SidebarProvider } from "@/components/SidebarContext";
 
 export const metadata = {
-  title: "Vidia | Zoom to YouTube Automation Studio",
+  title: "VidShuttle | Zoom to YouTube Automation Studio",
   description: "Automated Zoom recording watermarking and YouTube publishing pipeline",
 };
 

@@ -99,9 +99,9 @@ export function DashboardHeader() {
             <Menu className="w-4 h-4" />
           </button>
 
-          {/* Mobile Brand (Vidia) */}
+          {/* Mobile Brand (VidShuttle) */}
           <Link href="/dashboard" className="lg:hidden font-black text-base tracking-tight text-slate-900 dark:text-white font-sans">
-            Vidia
+            VidShuttle
           </Link>
 
           {/* Mobile Separator */}

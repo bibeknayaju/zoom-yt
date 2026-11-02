@@ -995,7 +995,7 @@ export default function ZoomAccountsPage() {
           </li>
           <li>
             Choose <strong>Server-to-Server OAuth</strong> as the app type and
-            name it (e.g. <em>Vidia Automation</em>).
+            name it (e.g. <em>VidShuttle Automation</em>).
           </li>
           <li>
             Copy your <strong>Account ID</strong>, <strong>Client ID</strong>,
@@ -1014,7 +1014,7 @@ export default function ZoomAccountsPage() {
           </li>
           <li>
             Click <strong>Activate your app</strong> in Zoom. Once active, paste
-            your credentials into Vidia to start automatic watermarking!
+            your credentials into VidShuttle to start automatic watermarking!
           </li>
         </ol>
       </div>
