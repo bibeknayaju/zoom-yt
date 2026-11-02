@@ -61,3 +61,62 @@ export async function triggerGitHubWorkflow(
     };
   }
 }
+
+/**
+ * Aborts any currently executing GitHub Actions cloud runner workflows.
+ */
+export async function cancelGitHubWorkflow(): Promise<{ cancelled: boolean; message: string }> {
+  const token = process.env.GITHUB_PAT || process.env.GH_TOKEN;
+  const repoOwner = process.env.GITHUB_REPO_OWNER || "bibeknayaju";
+  const repoName = process.env.GITHUB_REPO_NAME || "zoom-yt";
+
+  if (!token) {
+    return { cancelled: false, message: "GitHub token missing in environment variables" };
+  }
+
+  try {
+    const listRes = await fetch(
+      `https://api.github.com/repos/${repoOwner}/${repoName}/actions/runs?status=in_progress`,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token.trim()}`,
+          "User-Agent": "Zoom-YouTube-Studio",
+        },
+      }
+    );
+
+    if (!listRes.ok) {
+      return { cancelled: false, message: `Could not list GitHub runs: ${listRes.statusText}` };
+    }
+
+    const data = await listRes.json();
+    const inProgressRuns = data.workflow_runs || [];
+
+    if (inProgressRuns.length === 0) {
+      return { cancelled: true, message: "No active runner was executing on GitHub." };
+    }
+
+    for (const run of inProgressRuns) {
+      await fetch(
+        `https://api.github.com/repos/${repoOwner}/${repoName}/actions/runs/${run.id}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${token.trim()}`,
+            "User-Agent": "Zoom-YouTube-Studio",
+          },
+        }
+      );
+    }
+
+    return {
+      cancelled: true,
+      message: `Successfully cancelled ${inProgressRuns.length} running GitHub workflow(s).`,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Failed to cancel GitHub workflow";
+    return { cancelled: false, message: msg };
+  }
+}

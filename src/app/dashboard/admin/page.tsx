@@ -52,6 +52,11 @@ interface YouTubeStatus {
     unitsLimit: number;
     datePacific: string;
     remainingUnits: number;
+    remainingVideosToday?: number;
+    resetCountdown?: string;
+    resetAtNpt?: string;
+    extensionExpiryDate?: string;
+    daysUntilExpiry?: number;
   };
 }
 
@@ -558,13 +563,24 @@ export default function AdminSettingsPage() {
                   </div>
                 </div>
 
-                <div className="text-right">
+                <div className="text-right space-y-1">
                   <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    {ytStatus.quota?.unitsUsedToday ?? 0} / {ytStatus.quota?.unitsLimit ?? 10000} units used
+                    {(ytStatus.quota?.unitsUsedToday ?? 0).toLocaleString()} / {(ytStatus.quota?.unitsLimit ?? 48000).toLocaleString()} units used
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Resets daily at 12:00 AM Pacific
+                  <p className="text-[10px] text-slate-500">
+                    {ytStatus.quota?.remainingVideosToday ?? 20} uploads left today • Resets {ytStatus.quota?.resetCountdown ? `in ${ytStatus.quota.resetCountdown}` : "Midnight PT"}
                   </p>
+                  {ytStatus.quota?.daysUntilExpiry !== undefined && (
+                    <a
+                      href="https://console.cloud.google.com/iam-admin/quotas"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 hover:underline">
+                      <AlertTriangle className="w-2.5 h-2.5" />
+                      <span>48K extension: ~{ytStatus.quota.daysUntilExpiry} days remaining</span>
+                      <ExternalLink className="w-2.5 h-2.5" />
+                    </a>
+                  )}
                 </div>
               </div>
             ) : (

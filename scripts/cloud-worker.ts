@@ -460,24 +460,40 @@ async function runBatch() {
       const templateData = (settingsRow?.template_data as any) || {};
       const runs: any[] = Array.isArray(templateData.autopilot_runs) ? templateData.autopilot_runs : [];
       const runIdx = runs.findIndex((r) => r.id === autopilotRunId);
+      const statusToSet = failCount > 0 ? (successCount > 0 ? "partial" : "failed") : "success";
+      const summaryToSet = `Batch finished: ${processedCount} processed (${successCount} uploaded successfully, ${failCount} failed).`;
+
       if (runIdx >= 0) {
-        runs[runIdx].status = failCount > 0 ? (successCount > 0 ? "partial" : "failed") : "success";
-        runs[runIdx].summary = `Batch finished: ${processedCount} processed (${successCount} uploaded successfully, ${failCount} failed).`;
-
-        const nextAutopilot = {
-          ...(templateData.autopilot || {}),
-          lastRunStatus: runs[runIdx].status,
-          lastRunMessage: runs[runIdx].summary,
-        };
-
-        await supabase
-          .from("zy_settings")
-          .update({
-            template_data: { ...templateData, autopilot: nextAutopilot, autopilot_runs: runs },
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", "default");
+        runs[runIdx].status = statusToSet;
+        runs[runIdx].summary = summaryToSet;
       }
+
+      // Reconcile any previous trigger runs that were left in "running"
+      for (const r of runs) {
+        if (r.id !== autopilotRunId && r.status === "running") {
+          r.status = statusToSet;
+          r.summary = `Completed: Batch processed (${successCount} uploaded successfully).`;
+          if (Array.isArray(r.items)) {
+            for (const it of r.items) {
+              if (it.status === "queued") it.status = "already_uploaded";
+            }
+          }
+        }
+      }
+
+      const nextAutopilot = {
+        ...(templateData.autopilot || {}),
+        lastRunStatus: statusToSet,
+        lastRunMessage: summaryToSet,
+      };
+
+      await supabase
+        .from("zy_settings")
+        .update({
+          template_data: { ...templateData, autopilot: nextAutopilot, autopilot_runs: runs },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "default");
     } catch {}
   }
 

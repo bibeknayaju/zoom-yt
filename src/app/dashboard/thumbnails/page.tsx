@@ -46,8 +46,10 @@ interface AccountConfig {
 
 export default function ThumbnailStudioPage() {
   const [loading, setLoading] = useState(true);
-  const [activeTemplateId, setActiveTemplateId] = useState<ThumbnailTemplateId>("glassmorphism");
-  const [previewTemplateId, setPreviewTemplateId] = useState<ThumbnailTemplateId>("glassmorphism");
+  const [activeTemplateId, setActiveTemplateId] =
+    useState<ThumbnailTemplateId>("glassmorphism");
+  const [previewTemplateId, setPreviewTemplateId] =
+    useState<ThumbnailTemplateId>("glassmorphism");
   const [autoUploadThumbnail, setAutoUploadThumbnail] = useState(true);
   const [accounts, setAccounts] = useState<AccountConfig[]>([]);
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -55,8 +57,10 @@ export default function ThumbnailStudioPage() {
 
   // Live Preview Form State
   const [selectedSubject, setSelectedSubject] = useState("Science");
-  const [customTopic, setCustomTopic] = useState("प्रकाश र अपवर्तन (Optics & Refraction)");
-  
+  const [customTopic, setCustomTopic] = useState(
+    "प्रकाश र अपवर्तन (Optics & Refraction)",
+  );
+
   // Native HTML Date Picker defaulting automatically to today (YYYY-MM-DD)
   const [dateInput, setDateInput] = useState(() => {
     const d = new Date();
@@ -65,7 +69,9 @@ export default function ThumbnailStudioPage() {
     const day = String(d.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   });
-  const [nepaliDate, setNepaliDate] = useState(() => formatNepaliBikramSambat(new Date()));
+  const [nepaliDate, setNepaliDate] = useState(() =>
+    formatNepaliBikramSambat(new Date()),
+  );
 
   const handleDateChange = (val: string) => {
     setDateInput(val);
@@ -78,7 +84,8 @@ export default function ThumbnailStudioPage() {
   };
 
   // Teacher editing state
-  const [editingAccountName, setEditingAccountName] = useState<string>("Science");
+  const [editingAccountName, setEditingAccountName] =
+    useState<string>("Science");
   const [newTeacherName, setNewTeacherName] = useState("");
   const [savingAccountCfg, setSavingAccountCfg] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
@@ -142,7 +149,14 @@ export default function ThumbnailStudioPage() {
       nepaliDateStr: nepaliDate,
       logoPath: logoBase64 || undefined,
     });
-  }, [previewTemplateId, selectedSubject, customTopic, currentSubjectTeachers, nepaliDate, logoBase64]);
+  }, [
+    previewTemplateId,
+    selectedSubject,
+    customTopic,
+    currentSubjectTeachers,
+    nepaliDate,
+    logoBase64,
+  ]);
 
   // Set selected template as ACTIVE for YouTube
   const handleSetActiveTemplate = async (templateId: ThumbnailTemplateId) => {
@@ -173,7 +187,10 @@ export default function ThumbnailStudioPage() {
       await fetch("/api/zoom-youtube/thumbnails", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle_auto_upload", enabled: nextVal }),
+        body: JSON.stringify({
+          action: "toggle_auto_upload",
+          enabled: nextVal,
+        }),
       });
     } catch {}
   };
@@ -192,8 +209,13 @@ export default function ThumbnailStudioPage() {
         logoPath: logoBase64 || undefined,
       });
 
-      const safeSubject = selectedSubject.replace(/[^a-zA-Z0-9_\u0900-\u097F-]/g, "_");
-      const safeTopic = (customTopic || "session").slice(0, 35).replace(/[^a-zA-Z0-9_\u0900-\u097F-]/g, "_");
+      const safeSubject = selectedSubject.replace(
+        /[^a-zA-Z0-9_\u0900-\u097F-]/g,
+        "_",
+      );
+      const safeTopic = (customTopic || "session")
+        .slice(0, 35)
+        .replace(/[^a-zA-Z0-9_\u0900-\u097F-]/g, "_");
       const downloadFilename = `${safeSubject}_${safeTopic}_thumbnail.png`;
 
       // 2. Client-side canvas export: uses browser native HarfBuzz for 100% authentic Devanagari ligatures
@@ -210,7 +232,9 @@ export default function ThumbnailStudioPage() {
         if (!ctx) throw new Error("Canvas 2D context not available");
 
         // Encode SVG as UTF-8 safe base64
-        const svgBase64 = "data:image/svg+xml;charset=utf-8;base64," + btoa(unescape(encodeURIComponent(svg)));
+        const svgBase64 =
+          "data:image/svg+xml;charset=utf-8;base64," +
+          btoa(unescape(encodeURIComponent(svg)));
 
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -219,13 +243,17 @@ export default function ThumbnailStudioPage() {
             ctx.drawImage(img, 0, 0, 1280, 720);
             resolve();
           };
-          img.onerror = () => reject(new Error("SVG image load failed on canvas"));
+          img.onerror = () =>
+            reject(new Error("SVG image load failed on canvas"));
           img.src = svgBase64;
         });
 
         renderedPngUrl = canvas.toDataURL("image/png");
       } catch (canvasErr) {
-        console.warn("Client canvas render failed, falling back to server API:", canvasErr);
+        console.warn(
+          "Client canvas render failed, falling back to server API:",
+          canvasErr,
+        );
       }
 
       // If client canvas succeeded, trigger download immediately
@@ -264,7 +292,8 @@ export default function ThumbnailStudioPage() {
         throw new Error(json.error || "Failed to render thumbnail");
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to download thumbnail PNG";
+      const msg =
+        err instanceof Error ? err.message : "Failed to download thumbnail PNG";
       alert(msg);
     } finally {
       setDownloadingPng(false);
@@ -272,7 +301,9 @@ export default function ThumbnailStudioPage() {
   };
 
   // Subject Teacher Management
-  const currentEditingAccount = accounts.find((a) => a.accountName === editingAccountName);
+  const currentEditingAccount = accounts.find(
+    (a) => a.accountName === editingAccountName,
+  );
 
   // Toggle active status of a teacher
   const handleToggleTeacherActive = (teacherId: string) => {
@@ -281,9 +312,11 @@ export default function ThumbnailStudioPage() {
         if (acc.accountName !== editingAccountName) return acc;
         return {
           ...acc,
-          teachers: acc.teachers.map((t) => (t.id === teacherId ? { ...t, isActive: !t.isActive } : t)),
+          teachers: acc.teachers.map((t) =>
+            t.id === teacherId ? { ...t, isActive: !t.isActive } : t,
+          ),
         };
-      })
+      }),
     );
   };
 
@@ -299,7 +332,7 @@ export default function ThumbnailStudioPage() {
       prev.map((acc) => {
         if (acc.accountName !== editingAccountName) return acc;
         return { ...acc, teachers: [...acc.teachers, newT] };
-      })
+      }),
     );
     setNewTeacherName("");
   };
@@ -309,8 +342,11 @@ export default function ThumbnailStudioPage() {
     setAccounts((prev) =>
       prev.map((acc) => {
         if (acc.accountName !== editingAccountName) return acc;
-        return { ...acc, teachers: acc.teachers.filter((t) => t.id !== teacherId) };
-      })
+        return {
+          ...acc,
+          teachers: acc.teachers.filter((t) => t.id !== teacherId),
+        };
+      }),
     );
   };
 
@@ -348,7 +384,9 @@ export default function ThumbnailStudioPage() {
       <div className="flex-1 flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-3">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500" />
-          <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">Loading Thumbnail Studio...</p>
+          <p className="text-xs font-semibold text-slate-500 dark:text-zinc-400">
+            Loading Thumbnail Studio...
+          </p>
         </div>
       </div>
     );
@@ -356,15 +394,15 @@ export default function ThumbnailStudioPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200 dark:border-zinc-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2.5">
-            <Palette className="w-6 h-6 text-slate-900 dark:text-white" />
             <span>YouTube Thumbnail Studio</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
-            Pick from 6 attractive designs, configure multi-teacher assignments per subject, and auto-upload branded 1080p thumbnails with Nepali Bikram Sambat dates.
+            Pick from 6 attractive designs, configure multi-teacher assignments
+            per subject, and auto-upload branded 1080p thumbnails with Nepali
+            Bikram Sambat dates.
           </p>
         </div>
 
@@ -378,8 +416,14 @@ export default function ThumbnailStudioPage() {
                 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
                 : "bg-slate-100 dark:bg-zinc-900 text-slate-600 dark:text-zinc-400 border-slate-200 dark:border-zinc-800"
             }`}>
-            <span className={`w-2 h-2 rounded-full ${autoUploadThumbnail ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
-            <span>{autoUploadThumbnail ? "Auto-Upload to YouTube: ON" : "Auto-Upload: OFF"}</span>
+            <span
+              className={`w-2 h-2 rounded-full ${autoUploadThumbnail ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`}
+            />
+            <span>
+              {autoUploadThumbnail
+                ? "Auto-Upload to YouTube: ON"
+                : "Auto-Upload: OFF"}
+            </span>
           </button>
         </div>
       </div>
@@ -434,8 +478,18 @@ export default function ThumbnailStudioPage() {
           {/* Canvas Actions Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
             <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Style: <strong>{THUMBNAIL_TEMPLATES.find((t) => t.id === previewTemplateId)?.name}</strong> —{" "}
-              {THUMBNAIL_TEMPLATES.find((t) => t.id === previewTemplateId)?.tagline}
+              Style:{" "}
+              <strong>
+                {
+                  THUMBNAIL_TEMPLATES.find((t) => t.id === previewTemplateId)
+                    ?.name
+                }
+              </strong>{" "}
+              —{" "}
+              {
+                THUMBNAIL_TEMPLATES.find((t) => t.id === previewTemplateId)
+                  ?.tagline
+              }
             </p>
 
             <div className="flex items-center gap-2.5">
@@ -444,14 +498,22 @@ export default function ThumbnailStudioPage() {
                 onClick={handleDownloadPng}
                 disabled={downloadingPng}
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition shadow-xs disabled:opacity-50">
-                {downloadingPng ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span>{downloadingPng ? "Rendering PNG..." : "Download 1080p PNG"}</span>
+                {downloadingPng ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {downloadingPng ? "Rendering PNG..." : "Download 1080p PNG"}
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleSetActiveTemplate(previewTemplateId)}
-                disabled={savingTemplate || previewTemplateId === activeTemplateId}
+                disabled={
+                  savingTemplate || previewTemplateId === activeTemplateId
+                }
                 className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl shadow-xs transition disabled:opacity-50 ${
                   previewTemplateId === activeTemplateId
                     ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
@@ -464,7 +526,11 @@ export default function ThumbnailStudioPage() {
                 ) : (
                   <Sparkles className="w-3.5 h-3.5" />
                 )}
-                <span>{previewTemplateId === activeTemplateId ? "Active Template" : "Set as Active for YouTube"}</span>
+                <span>
+                  {previewTemplateId === activeTemplateId
+                    ? "Active Template"
+                    : "Set as Active for YouTube"}
+                </span>
               </button>
             </div>
           </div>
@@ -477,7 +543,9 @@ export default function ThumbnailStudioPage() {
               <Sliders className="w-3.5 h-3.5" />
               <span>Canvas Controls</span>
             </h3>
-            <span className="text-[10px] text-slate-400 font-mono">1280 × 720</span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              1280 × 720
+            </span>
           </div>
 
           {/* Subject Dropdown */}
@@ -508,7 +576,9 @@ export default function ThumbnailStudioPage() {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-700 dark:text-zinc-300 flex items-center justify-between">
               <span>Lesson Topic Title</span>
-              <span className="text-[10px] text-slate-400">Devanagari / English</span>
+              <span className="text-[10px] text-slate-400">
+                Devanagari / English
+              </span>
             </label>
             <textarea
               rows={2}
@@ -535,7 +605,9 @@ export default function ThumbnailStudioPage() {
             <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-semibold text-amber-900 dark:text-amber-300">
               <span className="flex items-center gap-1.5">
                 <span>🇳🇵</span>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-400">नेपाली मिति (वि.सं.):</span>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+                  नेपाली मिति (वि.सं.):
+                </span>
               </span>
               <span className="font-bold tracking-wide">{nepaliDate}</span>
             </div>
@@ -564,7 +636,8 @@ export default function ThumbnailStudioPage() {
             <span>Choose Your Active Template (6 Professional Designs)</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-            Select any template to set it as the default for all future automated Zoom-to-YouTube uploads.
+            Select any template to set it as the default for all future
+            automated Zoom-to-YouTube uploads.
           </p>
         </div>
 
@@ -589,8 +662,8 @@ export default function ThumbnailStudioPage() {
                   isActive
                     ? "border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 shadow-md"
                     : isPreviewing
-                    ? "border-zinc-900 dark:border-white shadow-xs"
-                    : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700"
+                      ? "border-zinc-900 dark:border-white shadow-xs"
+                      : "border-slate-200 dark:border-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700"
                 }`}>
                 {/* 16:9 Thumbnail Image */}
                 <div
@@ -671,7 +744,8 @@ export default function ThumbnailStudioPage() {
               <span>Subject &amp; Teacher Assignment</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-              Assign multiple teachers per subject and toggle who is currently active. Also set current unit/chapter topics.
+              Assign multiple teachers per subject and toggle who is currently
+              active. Also set current unit/chapter topics.
             </p>
           </div>
 
@@ -702,7 +776,8 @@ export default function ThumbnailStudioPage() {
                   Current Chapter / Topic for {editingAccountName}
                 </label>
                 <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                  When Zoom records a generic meeting room, Vidia automatically pulls this topic for thumbnails and titles.
+                  When Zoom records a generic meeting room, Vidia automatically
+                  pulls this topic for thumbnails and titles.
                 </p>
                 <input
                   type="text"
@@ -711,8 +786,10 @@ export default function ThumbnailStudioPage() {
                     const val = e.target.value;
                     setAccounts((prev) =>
                       prev.map((acc) =>
-                        acc.accountName === editingAccountName ? { ...acc, currentTopic: val } : acc
-                      )
+                        acc.accountName === editingAccountName
+                          ? { ...acc, currentTopic: val }
+                          : acc,
+                      ),
                     );
                   }}
                   placeholder="e.g. विद्युत र चुम्बकत्व (Electricity & Magnetism)"
@@ -726,14 +803,18 @@ export default function ThumbnailStudioPage() {
                   Add Instructor for {editingAccountName}
                 </label>
                 <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                  Type teacher name with title (e.g. Er. Ramesh Bhattarai, Prof. K.P. Sharma).
+                  Type teacher name with title (e.g. Er. Ramesh Bhattarai, Prof.
+                  K.P. Sharma).
                 </p>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     value={newTeacherName}
                     onChange={(e) => setNewTeacherName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTeacher())}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" &&
+                      (e.preventDefault(), handleAddTeacher())
+                    }
                     placeholder="Teacher name..."
                     className="flex-1 text-xs px-3 py-2 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-white"
                   />
@@ -755,7 +836,8 @@ export default function ThumbnailStudioPage() {
                   Assigned Instructors ({currentEditingAccount.teachers.length})
                 </span>
                 <span className="text-[11px] text-slate-400">
-                  Check the box to mark who is currently active / teaching today.
+                  Check the box to mark who is currently active / teaching
+                  today.
                 </span>
               </div>
 
@@ -785,7 +867,9 @@ export default function ThumbnailStudioPage() {
                             {t.name}
                           </p>
                           <p className="text-[10px] text-slate-400">
-                            {t.isActive ? "Active (Shown on thumbnail)" : "Inactive"}
+                            {t.isActive
+                              ? "Active (Shown on thumbnail)"
+                              : "Inactive"}
                           </p>
                         </div>
                       </label>
@@ -821,8 +905,16 @@ export default function ThumbnailStudioPage() {
                 onClick={handleSaveSubjectConfig}
                 disabled={savingAccountCfg}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-900 rounded-xl transition shadow-xs disabled:opacity-50">
-                {savingAccountCfg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                <span>{savingAccountCfg ? "Saving..." : `Save ${editingAccountName} Config`}</span>
+                {savingAccountCfg ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {savingAccountCfg
+                    ? "Saving..."
+                    : `Save ${editingAccountName} Config`}
+                </span>
               </button>
             </div>
           </div>

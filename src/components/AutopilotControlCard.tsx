@@ -7,6 +7,7 @@ import {
   Play,
   Loader2,
   CheckCircle2,
+  XCircle,
   AlertCircle,
   Clock,
   Video,
@@ -67,6 +68,7 @@ export function AutopilotControlCard() {
   // Discord & Advanced Settings state
   const [showSettings, setShowSettings] = useState(false);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [actionLoadingRunId, setActionLoadingRunId] = useState<string | null>(null);
   const [discordUrl, setDiscordUrl] = useState("");
   const [savingDiscord, setSavingDiscord] = useState(false);
   const [testingDiscord, setTestingDiscord] = useState(false);
@@ -90,6 +92,51 @@ export function AutopilotControlCard() {
       setLoading(false);
     }
   }, []);
+
+  const handleResolveRun = async (runId: string, status: "success" | "failed" = "success") => {
+    setActionLoadingRunId(runId);
+    try {
+      const res = await fetch("/api/zoom-youtube/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve_run", runId, status }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchAutopilotStatus();
+      } else {
+        alert(json.error || "Failed to resolve run");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to resolve run");
+    } finally {
+      setActionLoadingRunId(null);
+    }
+  };
+
+  const handleStopRun = async (runId: string) => {
+    if (!confirm("Are you sure you want to stop this run? This will abort any active GitHub Actions workflow runner.")) {
+      return;
+    }
+    setActionLoadingRunId(runId);
+    try {
+      const res = await fetch("/api/zoom-youtube/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop_run", runId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchAutopilotStatus();
+      } else {
+        alert(json.error || "Failed to stop run");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to stop run");
+    } finally {
+      setActionLoadingRunId(null);
+    }
+  };
 
   useEffect(() => {
     fetchAutopilotStatus();
@@ -474,6 +521,37 @@ export function AutopilotControlCard() {
                         {run.status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
                         {run.status.toUpperCase()}
                       </span>
+
+                      {run.status === "running" && (
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={actionLoadingRunId === run.id}
+                            onClick={() => handleResolveRun(run.id, "success")}
+                            title="Mark this run as completed"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 shadow-xs">
+                            {actionLoadingRunId === run.id ? (
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                            )}
+                            <span>Mark Done</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionLoadingRunId === run.id}
+                            onClick={() => handleStopRun(run.id)}
+                            title="Stop run and cancel active runner"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50 shadow-xs">
+                            {actionLoadingRunId === run.id ? (
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            ) : (
+                              <XCircle className="w-2.5 h-2.5" />
+                            )}
+                            <span>Stop</span>
+                          </button>
+                        </div>
+                      )}
 
                       <span className="font-semibold text-slate-800 dark:text-zinc-200">
                         {new Date(run.runAt).toLocaleString("en-US", {

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
     const isPaginated = pageParam !== null;
     const page = Math.max(1, parseInt(pageParam || "1", 10));
-    const limit = Math.max(1, Math.min(200, parseInt(limitParam || (isPaginated ? "25" : "100"), 10)));
+    const limit = Math.max(1, Math.min(500, parseInt(limitParam || (isPaginated ? "25" : "300"), 10)));
     const offset = (page - 1) * limit;
 
     let recordings: any[] = [];

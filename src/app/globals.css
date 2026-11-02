@@ -19,9 +19,9 @@
     --foreground: #f8fafc;
     --card: #000000;
     --card-foreground: #f8fafc;
-    --border: #27272a;
+    --border: rgba(255, 255, 255, 0.08);
     --sidebar: #000000;
-    --sidebar-border: #27272a;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
     color-scheme: dark;
   }
 }

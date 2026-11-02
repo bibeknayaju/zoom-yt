@@ -52,7 +52,8 @@ export interface ActivityLogItem {
 export default function ActivityLogsPage() {
   const router = useRouter();
   const { user } = useUser();
-  const userRole = (user?.publicMetadata?.role as string) === "admin" ? "admin" : "user";
+  const userRole =
+    (user?.publicMetadata?.role as string) === "admin" ? "admin" : "user";
 
   // Data & Pagination
   const [logs, setLogs] = useState<ActivityLogItem[]>([]);
@@ -69,6 +70,10 @@ export default function ActivityLogsPage() {
   const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRunRecord[]>([]);
   const [loadingAutopilot, setLoadingAutopilot] = useState<boolean>(false);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [actionLoadingRunId, setActionLoadingRunId] = useState<string | null>(
+    null,
+  );
+  const [syncingRuns, setSyncingRuns] = useState<boolean>(false);
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -104,6 +109,77 @@ export default function ActivityLogsPage() {
     }
   }, []);
 
+  const handleResolveRun = async (
+    runId: string,
+    status: "success" | "failed" = "success",
+  ) => {
+    setActionLoadingRunId(runId);
+    try {
+      const res = await fetch("/api/zoom-youtube/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve_run", runId, status }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchAutopilotRuns();
+      } else {
+        alert(json.error || "Failed to resolve run");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to resolve run");
+    } finally {
+      setActionLoadingRunId(null);
+    }
+  };
+
+  const handleStopRun = async (runId: string) => {
+    if (
+      !confirm(
+        "Are you sure you want to stop this run? This will abort any active GitHub Actions workflow runner.",
+      )
+    ) {
+      return;
+    }
+    setActionLoadingRunId(runId);
+    try {
+      const res = await fetch("/api/zoom-youtube/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop_run", runId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchAutopilotRuns();
+      } else {
+        alert(json.error || "Failed to stop run");
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to stop run");
+    } finally {
+      setActionLoadingRunId(null);
+    }
+  };
+
+  const handleSyncStaleRuns = async () => {
+    setSyncingRuns(true);
+    try {
+      const res = await fetch("/api/zoom-youtube/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "sync_runs" }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchAutopilotRuns();
+      }
+    } catch (err) {
+      console.error("Failed to sync runs:", err);
+    } finally {
+      setSyncingRuns(false);
+    }
+  };
+
   useEffect(() => {
     fetchAutopilotRuns();
   }, [fetchAutopilotRuns]);
@@ -125,7 +201,8 @@ export default function ActivityLogsPage() {
   } = useUploadQueue();
 
   type ProcessingTarget = "local" | "cloud";
-  const [processingTarget, setProcessingTarget] = useState<ProcessingTarget>("cloud");
+  const [processingTarget, setProcessingTarget] =
+    useState<ProcessingTarget>("cloud");
   const [triggeringRunner, setTriggeringRunner] = useState<boolean>(false);
 
   useEffect(() => {
@@ -150,7 +227,9 @@ export default function ActivityLogsPage() {
       const res = await fetch("/api/zoom-youtube/workflow/dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "Manual batch trigger from Activity page" }),
+        body: JSON.stringify({
+          reason: "Manual batch trigger from Activity page",
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -167,7 +246,12 @@ export default function ActivityLogsPage() {
 
   // Fetch paginated logs
   const fetchLogs = useCallback(
-    async (page = currentPage, limit = pageSize, status = statusFilter, search = searchQuery) => {
+    async (
+      page = currentPage,
+      limit = pageSize,
+      status = statusFilter,
+      search = searchQuery,
+    ) => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
@@ -176,12 +260,17 @@ export default function ActivityLogsPage() {
         if (status && status !== "all") params.set("status", status);
         if (search.trim()) params.set("search", search.trim());
 
-        const res = await fetch(`/api/zoom-youtube/activity-logs?${params.toString()}`);
+        const res = await fetch(
+          `/api/zoom-youtube/activity-logs?${params.toString()}`,
+        );
         const data = await res.json();
         if (data.success && Array.isArray(data.logs)) {
           setLogs(data.logs);
           setTotalCount(data.total ?? data.logs.length);
-          setTotalPages(data.totalPages ?? Math.max(1, Math.ceil((data.total ?? 1) / limit)));
+          setTotalPages(
+            data.totalPages ??
+              Math.max(1, Math.ceil((data.total ?? 1) / limit)),
+          );
           setLastRefreshed(new Date());
         }
       } catch (err) {
@@ -190,7 +279,7 @@ export default function ActivityLogsPage() {
         setLoading(false);
       }
     },
-    [currentPage, pageSize, statusFilter, searchQuery]
+    [currentPage, pageSize, statusFilter, searchQuery],
   );
 
   useEffect(() => {
@@ -201,19 +290,36 @@ export default function ActivityLogsPage() {
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
         fetchLogs(currentPage, pageSize, statusFilter, searchQuery);
       }
     }, 15000);
     return () => clearInterval(interval);
-  }, [autoRefresh, currentPage, pageSize, statusFilter, searchQuery, fetchLogs]);
+  }, [
+    autoRefresh,
+    currentPage,
+    pageSize,
+    statusFilter,
+    searchQuery,
+    fetchLogs,
+  ]);
 
   // Clear logs
   const handleClearLogs = async () => {
-    if (!confirm("Are you sure you want to clear all activity and audit logs? This cannot be undone.")) return;
+    if (
+      !confirm(
+        "Are you sure you want to clear all activity and audit logs? This cannot be undone.",
+      )
+    )
+      return;
     setClearing(true);
     try {
-      const res = await fetch("/api/zoom-youtube/activity-logs", { method: "DELETE" });
+      const res = await fetch("/api/zoom-youtube/activity-logs", {
+        method: "DELETE",
+      });
       const data = await res.json();
       if (data.success) {
         setLogs([]);
@@ -269,118 +375,119 @@ export default function ActivityLogsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-      {/* Page Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-zinc-800">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2.5 bg-gradient-to-tr from-rose-600 to-indigo-600 rounded-xl shadow-md text-white">
-                <History className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                  <span>Activity Logs &amp; Upload History</span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30">
-                    {totalCount} Total Logs
-                  </span>
-                </h1>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Comprehensive audit trail of Zoom recording downloads, watermark rendering, and YouTube uploads.
-                </p>
-              </div>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-zinc-800">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Activity Logs &amp; Upload History</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30">
+                  {totalCount} Total Logs
+                </span>
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Comprehensive audit trail of Zoom recording downloads, watermark
+                rendering, and YouTube uploads.
+              </p>
             </div>
           </div>
+        </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Live refresh toggle */}
-            <button
-              type="button"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition ${
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Live refresh toggle */}
+          <button
+            type="button"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition ${
+              autoRefresh
+                ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400"
+                : "bg-white dark:bg-black border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400"
+            }`}>
+            <span
+              className={`w-2 h-2 rounded-full ${
                 autoRefresh
-                  ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400"
-                  : "bg-white dark:bg-black border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400"
-              }`}>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  autoRefresh ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse" : "bg-slate-400 dark:bg-slate-500"
-                }`}
-              />
-              <span>Live {autoRefresh ? "ON (15s)" : "Paused"}</span>
-            </button>
+                  ? "bg-emerald-500 dark:bg-emerald-400 animate-pulse"
+                  : "bg-slate-400 dark:bg-slate-500"
+              }`}
+            />
+            <span>Live {autoRefresh ? "ON (15s)" : "Paused"}</span>
+          </button>
 
-            {/* Refresh button */}
+          {/* Refresh button */}
+          <button
+            type="button"
+            onClick={() => {
+              fetchLogs(currentPage, pageSize, statusFilter, searchQuery);
+              fetchAutopilotRuns();
+            }}
+            disabled={loading || loadingAutopilot}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-black hover:bg-slate-100 dark:hover:bg-zinc-850 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-sm transition disabled:opacity-50">
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${loading || loadingAutopilot ? "animate-spin text-blue-500" : ""}`}
+            />
+            <span>Refresh</span>
+          </button>
+
+          {/* Clear logs */}
+          {userRole === "admin" && activeTab === "videos" && (
             <button
               type="button"
-              onClick={() => {
-                fetchLogs(currentPage, pageSize, statusFilter, searchQuery);
-                fetchAutopilotRuns();
-              }}
-              disabled={loading || loadingAutopilot}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-black hover:bg-slate-100 dark:hover:bg-zinc-850 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-sm transition disabled:opacity-50">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading || loadingAutopilot ? "animate-spin text-blue-500" : ""}`} />
-              <span>Refresh</span>
+              onClick={handleClearLogs}
+              disabled={clearing || totalCount === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-red-400 hover:text-rose-700 dark:hover:text-red-300 bg-rose-50 dark:bg-red-950/40 hover:bg-rose-100 dark:hover:bg-red-950/70 border border-rose-200 dark:border-red-800/60 rounded-xl transition disabled:opacity-40">
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{clearing ? "Clearing..." : "Clear Logs"}</span>
             </button>
-
-            {/* Clear logs */}
-            {userRole === "admin" && activeTab === "videos" && (
-              <button
-                type="button"
-                onClick={handleClearLogs}
-                disabled={clearing || totalCount === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-red-400 hover:text-rose-700 dark:hover:text-red-300 bg-rose-50 dark:bg-red-950/40 hover:bg-rose-100 dark:hover:bg-red-950/70 border border-rose-200 dark:border-red-800/60 rounded-xl transition disabled:opacity-40">
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{clearing ? "Clearing..." : "Clear Logs"}</span>
-              </button>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
-        {/* Segmented Tab Switcher */}
-        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
-          <button
-            type="button"
-            onClick={() => setActiveTab("videos")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+      {/* Segmented Tab Switcher */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab("videos")}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+            activeTab === "videos"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+              : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+          }`}>
+          <History className="w-3.5 h-3.5" />
+          <span>Video Processing &amp; YouTube Logs</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] ${
               activeTab === "videos"
-                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+                ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                : "bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
             }`}>
-            <History className="w-3.5 h-3.5" />
-            <span>Video Processing &amp; YouTube Logs</span>
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeTab === "videos"
-                  ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
-                  : "bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
-              }`}>
-              {totalCount}
-            </span>
-          </button>
+            {totalCount}
+          </span>
+        </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("autopilot")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+        <button
+          type="button"
+          onClick={() => setActiveTab("autopilot")}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-xs ${
+            activeTab === "autopilot"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+              : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+          }`}>
+          <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+          <span>Auto-Pilot Discovery Runs</span>
+          <span
+            className={`px-1.5 py-0.2 rounded-full text-[10px] ${
               activeTab === "autopilot"
-                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                : "text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-900"
+                ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                : "bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
             }`}>
-            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>Auto-Pilot Discovery Runs</span>
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeTab === "autopilot"
-                  ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
-                  : "bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"
-              }`}>
-              {autopilotRuns.length}
-            </span>
-          </button>
-        </div>
+            {autopilotRuns.length}
+          </span>
+        </button>
+      </div>
 
-        {activeTab === "videos" ? (
-          /* Main Card with Toolbar & Table (Video Processing Logs) */
-          <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
+      {activeTab === "videos" ? (
+        /* Main Card with Toolbar & Table (Video Processing Logs) */
+        <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
           {/* Controls / Filter Bar */}
           <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/80 dark:bg-black">
             {/* Search Input */}
@@ -443,14 +550,18 @@ export default function ActivityLogsPage() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 space-y-3">
                 <Loader2 className="w-8 h-8 text-rose-500 animate-spin" />
-                <p className="text-xs text-slate-400">Loading audit history...</p>
+                <p className="text-xs text-slate-400">
+                  Loading audit history...
+                </p>
               </div>
             ) : logs.length === 0 ? (
               <div className="text-center py-16 space-y-3">
                 <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex items-center justify-center mx-auto text-slate-400">
                   <History className="w-6 h-6" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200">No activity logs recorded</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-200">
+                  No activity logs recorded
+                </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
                   {searchQuery || statusFilter !== "all"
                     ? "No logs match the current search or status filter."
@@ -482,7 +593,9 @@ export default function ActivityLogsPage() {
                       <React.Fragment key={log.id}>
                         <tr
                           className={`hover:bg-slate-50/80 dark:hover:bg-zinc-900/50 transition cursor-pointer ${
-                            isExpanded ? "bg-slate-100/70 dark:bg-zinc-900/60" : ""
+                            isExpanded
+                              ? "bg-slate-100/70 dark:bg-zinc-900/60"
+                              : ""
                           }`}
                           onClick={() =>
                             setExpandedLogId(isExpanded ? null : log.id)
@@ -503,11 +616,12 @@ export default function ActivityLogsPage() {
                             <div className="font-bold text-slate-900 dark:text-slate-100 max-w-xs truncate">
                               {log.customTitle || log.topic}
                             </div>
-                            {log.customTitle && log.customTitle !== log.topic && (
-                              <p className="text-[11px] text-slate-500 truncate">
-                                Topic: {log.topic}
-                              </p>
-                            )}
+                            {log.customTitle &&
+                              log.customTitle !== log.topic && (
+                                <p className="text-[11px] text-slate-500 truncate">
+                                  Topic: {log.topic}
+                                </p>
+                              )}
                             <span className="text-[10px] font-mono text-slate-500">
                               ID: {log.fileId}
                             </span>
@@ -541,7 +655,9 @@ export default function ActivityLogsPage() {
                               <Sparkles className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400" />
                               <span>{log.resolution || "720p"}</span>
                               <span>•</span>
-                              <span className="capitalize">{log.watermarkType || "WM"}</span>
+                              <span className="capitalize">
+                                {log.watermarkType || "WM"}
+                              </span>
                             </span>
                           </td>
 
@@ -613,10 +729,16 @@ export default function ActivityLogsPage() {
                                     </div>
                                     <button
                                       type="button"
-                                      onClick={() => handleCopy(log.youtubeUrl!, log.id)}
+                                      onClick={() =>
+                                        handleCopy(log.youtubeUrl!, log.id)
+                                      }
                                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition self-start sm:self-auto shrink-0 shadow-xs">
                                       <Copy className="w-3.5 h-3.5" />
-                                      <span>{copiedId === log.id ? "Copied!" : "Copy URL"}</span>
+                                      <span>
+                                        {copiedId === log.id
+                                          ? "Copied!"
+                                          : "Copy URL"}
+                                      </span>
                                     </button>
                                   </div>
                                 )}
@@ -624,19 +746,29 @@ export default function ActivityLogsPage() {
                                 {/* Job Metadata Details Grid */}
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-100 dark:bg-black p-3 rounded-xl border border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-slate-400">
                                   <div>
-                                    <strong className="text-slate-800 dark:text-slate-300 block">Zoom File ID:</strong>
-                                    <span className="font-mono text-[10px] break-all">{log.fileId}</span>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">
+                                      Zoom File ID:
+                                    </strong>
+                                    <span className="font-mono text-[10px] break-all">
+                                      {log.fileId}
+                                    </span>
                                   </div>
                                   <div>
-                                    <strong className="text-slate-800 dark:text-slate-300 block">Started:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">
+                                      Started:
+                                    </strong>
                                     <span>{formatDate(log.startedAt)}</span>
                                   </div>
                                   <div>
-                                    <strong className="text-slate-800 dark:text-slate-300 block">Completed:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">
+                                      Completed:
+                                    </strong>
                                     <span>{formatDate(log.completedAt)}</span>
                                   </div>
                                   <div>
-                                    <strong className="text-slate-800 dark:text-slate-300 block">Target Resolution:</strong>
+                                    <strong className="text-slate-800 dark:text-slate-300 block">
+                                      Target Resolution:
+                                    </strong>
                                     <span>{log.resolution || "720p"}</span>
                                   </div>
                                 </div>
@@ -673,7 +805,7 @@ export default function ActivityLogsPage() {
         <div className="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-black shadow-xl overflow-hidden flex flex-col">
           {/* Header Bar */}
           <div className="p-4 border-b border-slate-200 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 dark:bg-black">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                 Auto-Pilot Discovery &amp; Batch Runs
@@ -683,9 +815,24 @@ export default function ActivityLogsPage() {
               </span>
             </div>
 
-            <p className="text-xs text-slate-500 dark:text-zinc-400">
-              Scans all active Zoom accounts strictly for today&apos;s classes in Nepal Time.
-            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleSyncStaleRuns}
+                disabled={syncingRuns || loadingAutopilot}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 transition shadow-xs disabled:opacity-50">
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${syncingRuns ? "animate-spin" : ""}`}
+                />
+                <span>
+                  {syncingRuns ? "Reconciling..." : "Sync Stale Runs"}
+                </span>
+              </button>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 hidden lg:block">
+                Scans all active Zoom accounts strictly for today&apos;s classes
+                in Nepal Time.
+              </p>
+            </div>
           </div>
 
           {/* Table */}
@@ -693,7 +840,9 @@ export default function ActivityLogsPage() {
             {loadingAutopilot ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
-                <p className="text-xs text-slate-500 dark:text-zinc-400">Loading discovery run history...</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Loading discovery run history...
+                </p>
               </div>
             ) : autopilotRuns.length === 0 ? (
               <div className="text-center py-16 px-4 space-y-2">
@@ -701,7 +850,8 @@ export default function ActivityLogsPage() {
                   No Auto-Pilot Runs Logged Yet
                 </p>
                 <p className="text-xs text-slate-500 dark:text-zinc-400">
-                  Runs will appear here automatically when the scheduled cloud runner or manual trigger scans Zoom.
+                  Runs will appear here automatically when the scheduled cloud
+                  runner or manual trigger scans Zoom.
                 </p>
               </div>
             ) : (
@@ -772,25 +922,66 @@ export default function ActivityLogsPage() {
                           </p>
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                              run.status === "success"
-                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                                : run.status === "running"
-                                ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                                : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
-                            }`}>
-                            {run.status === "success" && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-                            {run.status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
-                            {run.status.toUpperCase()}
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                run.status === "success"
+                                  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                                  : run.status === "running"
+                                    ? "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                                    : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                              }`}>
+                              {run.status === "success" && (
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              )}
+                              {run.status === "running" && (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              )}
+                              {run.status.toUpperCase()}
+                            </span>
+
+                            {run.status === "running" && (
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={actionLoadingRunId === run.id}
+                                  onClick={() =>
+                                    handleResolveRun(run.id, "success")
+                                  }
+                                  title="Mark this run as completed"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50 shadow-xs">
+                                  {actionLoadingRunId === run.id ? (
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                  ) : (
+                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                  )}
+                                  <span>Mark Done</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={actionLoadingRunId === run.id}
+                                  onClick={() => handleStopRun(run.id)}
+                                  title="Stop run and cancel active runner"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-600 hover:bg-rose-500 text-white transition disabled:opacity-50 shadow-xs">
+                                  {actionLoadingRunId === run.id ? (
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                  ) : (
+                                    <XCircle className="w-2.5 h-2.5" />
+                                  )}
+                                  <span>Stop</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-right">
                           {run.items && run.items.length > 0 && (
                             <button
                               type="button"
                               onClick={() =>
-                                setExpandedRunId(expandedRunId === run.id ? null : run.id)
+                                setExpandedRunId(
+                                  expandedRunId === run.id ? null : run.id,
+                                )
                               }
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-zinc-300 hover:text-slate-900 dark:hover:text-white">
                               <span>
@@ -839,18 +1030,22 @@ export default function ActivityLogsPage() {
 
                                     <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-zinc-900 text-[11px]">
                                       <span className="text-slate-500 dark:text-zinc-400">
-                                        {new Date(it.startTime).toLocaleString("en-US", {
-                                          timeZone: "Asia/Kathmandu",
-                                          month: "short",
-                                          day: "numeric",
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                          hour12: true,
-                                        })}{" "}
+                                        {new Date(it.startTime).toLocaleString(
+                                          "en-US",
+                                          {
+                                            timeZone: "Asia/Kathmandu",
+                                            month: "short",
+                                            day: "numeric",
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                            hour12: true,
+                                          },
+                                        )}{" "}
                                         NPT
                                       </span>
 
-                                      {it.status === "already_uploaded" && it.youtubeUrl ? (
+                                      {it.status === "already_uploaded" &&
+                                      it.youtubeUrl ? (
                                         <a
                                           href={it.youtubeUrl}
                                           target="_blank"
@@ -865,14 +1060,17 @@ export default function ActivityLogsPage() {
                                         </span>
                                       ) : it.status === "zoom_processing" ? (
                                         <span className="font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
-                                          <Loader2 className="w-3 h-3 animate-spin" /> Rendering on Zoom (~30-45m)
+                                          <Loader2 className="w-3 h-3 animate-spin" />{" "}
+                                          Rendering on Zoom (~30-45m)
                                         </span>
                                       ) : it.status === "already_queued" ? (
                                         <span className="font-semibold text-sky-600 dark:text-sky-400">
                                           Already processing
                                         </span>
                                       ) : (
-                                        <span className="text-slate-500">{it.status}</span>
+                                        <span className="text-slate-500">
+                                          {it.status}
+                                        </span>
                                       )}
                                     </div>
                                   </div>

@@ -121,7 +121,40 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
     const templateData = (settingsRow?.template_data as any) || {};
     const autopilotConfig = templateData.autopilot || {};
-    const autopilotRuns = templateData.autopilot_runs || [];
+    const autopilotRuns: any[] = Array.isArray(templateData.autopilot_runs)
+      ? templateData.autopilot_runs
+      : [];
+
+    // Automatically reconcile stale "running" runs if older than 20 minutes
+    let runsModified = false;
+    const nowTime = Date.now();
+    for (const r of autopilotRuns) {
+      if (r.status === "running") {
+        const runAgeMs = nowTime - new Date(r.runAt).getTime();
+        if (runAgeMs > 20 * 60 * 1000) {
+          r.status = "success";
+          r.summary =
+            r.summary?.replace("Cloud Runner started!", "Batch completed.") ||
+            "Batch completed successfully.";
+          if (Array.isArray(r.items)) {
+            for (const it of r.items) {
+              if (it.status === "queued") it.status = "already_uploaded";
+            }
+          }
+          runsModified = true;
+        }
+      }
+    }
+
+    if (runsModified) {
+      await supabase
+        .from("zy_settings")
+        .update({
+          template_data: { ...templateData, autopilot_runs: autopilotRuns },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "default");
+    }
 
     const { count: activeAccountsCount } = await supabase
       .from("zy_zoom_accounts")
@@ -274,6 +307,121 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "Test notification sent to Discord channel successfully!",
+      });
+    }
+
+    if (action === "resolve_run") {
+      const { runId, status: newStatus = "success" } = body;
+      const { data: settingsRow } = await supabase
+        .from("zy_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
+      const templateData = (settingsRow?.template_data as any) || {};
+      const runs: any[] = Array.isArray(templateData.autopilot_runs)
+        ? templateData.autopilot_runs
+        : [];
+
+      const target = runs.find((r) => r.id === runId);
+      if (target) {
+        target.status = newStatus;
+        target.summary = `Manually marked as ${newStatus.toUpperCase()} by user.`;
+        if (Array.isArray(target.items)) {
+          for (const it of target.items) {
+            if (it.status === "queued") it.status = "already_uploaded";
+          }
+        }
+        await supabase
+          .from("zy_settings")
+          .update({
+            template_data: { ...templateData, autopilot_runs: runs },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", "default");
+      }
+      return NextResponse.json({
+        success: true,
+        message: `Run ${runId} marked as ${newStatus}`,
+      });
+    }
+
+    if (action === "stop_run") {
+      const { runId } = body;
+      const { cancelGitHubWorkflow } = await import("@/lib/github-actions");
+      const cancelRes = await cancelGitHubWorkflow();
+
+      const { data: settingsRow } = await supabase
+        .from("zy_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
+      const templateData = (settingsRow?.template_data as any) || {};
+      const runs: any[] = Array.isArray(templateData.autopilot_runs)
+        ? templateData.autopilot_runs
+        : [];
+
+      for (const r of runs) {
+        if (r.id === runId || (!runId && r.status === "running")) {
+          r.status = "failed";
+          r.summary = "Stopped manually by user from Dashboard.";
+        }
+      }
+
+      await supabase
+        .from("zy_settings")
+        .update({
+          template_data: { ...templateData, autopilot_runs: runs },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", "default");
+
+      return NextResponse.json({
+        success: true,
+        message: cancelRes.message || "Run stopped successfully",
+      });
+    }
+
+    if (action === "sync_runs") {
+      const { data: settingsRow } = await supabase
+        .from("zy_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
+      const templateData = (settingsRow?.template_data as any) || {};
+      const runs: any[] = Array.isArray(templateData.autopilot_runs)
+        ? templateData.autopilot_runs
+        : [];
+      let updatedCount = 0;
+
+      for (const r of runs) {
+        if (r.status === "running") {
+          r.status = "success";
+          r.summary =
+            r.summary?.replace("Cloud Runner started!", "Completed.") ||
+            "Batch completed successfully.";
+          if (Array.isArray(r.items)) {
+            for (const it of r.items) {
+              if (it.status === "queued") it.status = "already_uploaded";
+            }
+          }
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount > 0) {
+        await supabase
+          .from("zy_settings")
+          .update({
+            template_data: { ...templateData, autopilot_runs: runs },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", "default");
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Synchronized ${updatedCount} stale run(s).`,
+        runs,
       });
     }
 
