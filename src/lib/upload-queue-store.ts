@@ -10,19 +10,27 @@ export function buildWatermarkConfig(preset?: WatermarkPreset) {
   if (typeof window !== "undefined") {
     try {
       const raw = localStorage.getItem("zoomyt_auto_watermark_template");
-      if (raw) savedTpl = JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Purge legacy hardcoded defaults if found in localStorage
+        if (parsed?.logoPath === "/assets/images/logo_main.png" && parsed?.imagePosX === 0.78) {
+          localStorage.removeItem("zoomyt_auto_watermark_template");
+        } else {
+          savedTpl = parsed;
+        }
+      }
     } catch {}
   }
 
-  const effectivePreset: WatermarkPreset = preset || savedTpl?.watermarkType || globalWatermarkPreset || "both";
+  const effectivePreset: WatermarkPreset = preset || savedTpl?.watermarkType || globalWatermarkPreset || "image";
 
   if (effectivePreset === "none") return { type: "none" };
 
-  const logoScale = typeof savedTpl?.imageScale === "number" ? savedTpl.imageScale : 0.18;
-  const logoOpacity = typeof savedTpl?.imageOpacity === "number" ? savedTpl.imageOpacity : 0.85;
-  const logoPosX = typeof savedTpl?.imagePosX === "number" ? savedTpl.imagePosX : 0.78;
-  const logoPosY = typeof savedTpl?.imagePosY === "number" ? savedTpl.imagePosY : 0.04;
-  const logoPath = savedTpl?.logoPath || "/assets/images/logo_main.png";
+  const logoScale = typeof savedTpl?.imageScale === "number" ? savedTpl.imageScale : 0.24;
+  const logoOpacity = typeof savedTpl?.imageOpacity === "number" ? savedTpl.imageOpacity : 1.0;
+  const logoPosX = typeof savedTpl?.imagePosX === "number" ? savedTpl.imagePosX : 0.72;
+  const logoPosY = typeof savedTpl?.imagePosY === "number" ? savedTpl.imagePosY : 0.83;
+  const logoPath = savedTpl?.logoPath || "/assets/images/logo1.png";
 
   const text = savedTpl?.watermarkText || "Union Education";
   const fontSize = typeof savedTpl?.fontSize === "number" ? savedTpl.fontSize : 24;
@@ -88,8 +96,8 @@ export interface DirectUploadQueueItem {
 
 // Global in-memory queue shared across client-side page transitions
 let globalQueue: DirectUploadQueueItem[] = [];
-let globalResolution: VideoResolution = "720p";
-let globalWatermarkPreset: WatermarkPreset = "both";
+let globalResolution: VideoResolution = "1080p";
+let globalWatermarkPreset: WatermarkPreset = "image";
 let isProcessing = false;
 let activeAbortController: AbortController | null = null;
 let activeProcessingFileId: string | null = null;

@@ -16,14 +16,14 @@ export interface AutoWatermarkTemplate {
 }
 
 export const DEFAULT_WATERMARK_TEMPLATE: AutoWatermarkTemplate = {
-  watermarkType: "both",
-  selectedResolution: "720p",
-  logoPresetId: "crest",
-  logoPath: "/assets/images/logo_main.png",
-  imageScale: 0.18,
-  imageOpacity: 0.85,
-  imagePosX: 0.78,
-  imagePosY: 0.04,
+  watermarkType: "image",
+  selectedResolution: "1080p",
+  logoPresetId: "banner",
+  logoPath: "/assets/images/logo1.png",
+  imageScale: 0.24,
+  imageOpacity: 1.0,
+  imagePosX: 0.72,
+  imagePosY: 0.83,
   watermarkText: "Union Education",
   fontSize: 24,
   textOpacity: 0.85,

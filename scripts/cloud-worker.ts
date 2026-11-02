@@ -245,17 +245,22 @@ async function runBatch() {
 
         // 4. Load Settings & Watermark Options
         const settings = await loadDefaultSettings();
-        const jobOptions = (job as any).options || {};
+        const tplData = ((settings as any)?.template_data as any) || {};
+        const rawJobOptions = (job as any).options || {};
+        const isLegacyJob =
+          rawJobOptions.logoPath === "/assets/images/logo_main.png" &&
+          (rawJobOptions.imagePosX === 0.78 || rawJobOptions.posX === 0.78);
+        const jobOptions = isLegacyJob ? {} : rawJobOptions;
 
         const watermarkOpts = {
-          type: jobOptions.watermarkType || settings.watermark_type || "image",
-          logoPath: jobOptions.logoPath || settings.watermark_image_url || "/assets/images/logo1.png",
-          imageScale: jobOptions.imageScale ?? settings.watermark_scale ?? 0.18,
-          imageOpacity: jobOptions.imageOpacity ?? settings.watermark_opacity ?? 0.85,
-          imagePosX: jobOptions.imagePosX ?? settings.watermark_pos_x ?? 0.78,
-          imagePosY: jobOptions.imagePosY ?? settings.watermark_pos_y ?? 0.04,
-          text: jobOptions.watermarkText || settings.watermark_text || "Union Education",
-          resolution: jobOptions.resolution || "original",
+          type: jobOptions.watermarkType || tplData.watermarkType || settings.watermark_type || "image",
+          logoPath: jobOptions.logoPath || tplData.logoPath || settings.watermark_image_url || "/assets/images/logo1.png",
+          imageScale: jobOptions.imageScale ?? tplData.imageScale ?? settings.watermark_scale ?? 0.24,
+          imageOpacity: jobOptions.imageOpacity ?? tplData.imageOpacity ?? settings.watermark_opacity ?? 1.0,
+          imagePosX: jobOptions.imagePosX ?? tplData.imagePosX ?? settings.watermark_pos_x ?? 0.72,
+          imagePosY: jobOptions.imagePosY ?? tplData.imagePosY ?? settings.watermark_pos_y ?? 0.83,
+          text: jobOptions.watermarkText || tplData.watermarkText || settings.watermark_text || "Union Education",
+          resolution: jobOptions.resolution || tplData.selectedResolution || "original",
         };
 
         // 5. Execute End-to-End Processing (Stream + Watermark + YouTube Upload + Disk Cleanup)

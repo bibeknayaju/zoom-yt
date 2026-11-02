@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { triggerGitHubWorkflow } from "@/lib/github-actions";
+import { getWatermarkTemplate } from "@/lib/watermark-template-server";
 
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -35,22 +36,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Database connection not available" }, { status: 500 });
     }
 
+    const defaultTpl = await getWatermarkTemplate();
+    const isLegacyDefault =
+      watermark?.logoPath === "/assets/images/logo_main.png" &&
+      (watermark?.imagePosX === 0.78 || watermark?.posX === 0.78);
+
+    const effectiveWm = isLegacyDefault ? null : watermark;
+
     const options = {
-      watermarkType: watermark?.type || "image",
-      watermarkText: watermark?.text || watermarkText || "Union Education",
-      resolution: resolution || watermark?.resolution || "original",
+      watermarkType: effectiveWm?.type || defaultTpl.watermarkType || "image",
+      watermarkText: effectiveWm?.text || watermarkText || defaultTpl.watermarkText || "Union Education",
+      resolution: resolution || effectiveWm?.resolution || defaultTpl.selectedResolution || "original",
       privacyStatus: privacyStatus || "unlisted",
       customTitle,
       customDescription,
-      logoPath: watermark?.logoPath,
-      imageScale: watermark?.imageScale ?? watermark?.scale,
-      imageOpacity: watermark?.imageOpacity ?? watermark?.opacity,
-      imagePosX: watermark?.imagePosX ?? watermark?.posX,
-      imagePosY: watermark?.imagePosY ?? watermark?.posY,
-      textOpacity: watermark?.textOpacity ?? watermark?.opacity,
-      textPosX: watermark?.textPosX,
-      textPosY: watermark?.textPosY,
-      fontSize: watermark?.fontSize,
+      logoPath: effectiveWm?.logoPath || defaultTpl.logoPath || "/assets/images/logo1.png",
+      imageScale: effectiveWm?.imageScale ?? effectiveWm?.scale ?? defaultTpl.imageScale ?? 0.24,
+      imageOpacity: effectiveWm?.imageOpacity ?? effectiveWm?.opacity ?? defaultTpl.imageOpacity ?? 1.0,
+      imagePosX: effectiveWm?.imagePosX ?? effectiveWm?.posX ?? defaultTpl.imagePosX ?? 0.72,
+      imagePosY: effectiveWm?.imagePosY ?? effectiveWm?.posY ?? defaultTpl.imagePosY ?? 0.83,
+      textOpacity: effectiveWm?.textOpacity ?? effectiveWm?.opacity ?? defaultTpl.textOpacity ?? 0.85,
+      textPosX: effectiveWm?.textPosX ?? defaultTpl.textPosX ?? 0.04,
+      textPosY: effectiveWm?.textPosY ?? defaultTpl.textPosY ?? 0.90,
+      fontSize: effectiveWm?.fontSize ?? defaultTpl.fontSize ?? 24,
     };
 
     let enqueuedCount = 0;
