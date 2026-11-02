@@ -17,6 +17,7 @@ import {
   generateAutoThumbnailForUpload,
   uploadThumbnailToYouTube,
 } from "@/lib/thumbnail-server";
+import { Resvg } from "@resvg/resvg-js";
 
 const execAsync = promisify(exec);
 
@@ -540,8 +541,18 @@ export async function downloadZoomVideo(
   }
 }
 
+function escapeBadgeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /**
  * Generates a clean, transparent PNG badge with white text on a subtle dark pill background.
+ * Uses native Resvg Rust engine for 100% reliable rendering without any Python/PIL dependency.
  */
 async function generateTextBadgePng(
   text: string,
@@ -549,50 +560,43 @@ async function generateTextBadgePng(
   fontSize = 28,
   videoHeight = 720
 ): Promise<string> {
-  const pyScript = `
-import sys
-from PIL import Image, ImageDraw, ImageFont
+  const scaleFactor = Math.max(0.5, Math.min(2.5, videoHeight / 720.0));
+  const scaledFontSize = Math.max(14, Math.round(fontSize * scaleFactor));
+  const padX = Math.max(12, Math.round(18 * scaleFactor));
+  const padY = Math.max(6, Math.round(10 * scaleFactor));
+  const radius = Math.max(4, Math.round(8 * scaleFactor));
 
-text = sys.argv[1]
-output = sys.argv[2]
-base_font_size = int(sys.argv[3]) if len(sys.argv) > 3 else 28
-vh = int(sys.argv[4]) if len(sys.argv) > 4 else 720
+  // Width calculation with comfortable padding for English & Devanagari Unicode glyphs
+  const charWidth = scaledFontSize * 0.72;
+  const textWidth = Math.ceil(text.length * charWidth);
+  const w = textWidth + padX * 2;
+  const h = Math.ceil(scaledFontSize * 1.35) + padY * 2;
+  const textY = padY + Math.round(scaledFontSize * 0.95);
 
-scale_factor = max(0.5, min(2.5, vh / 720.0))
-font_size = max(14, int(base_font_size * scale_factor))
-pad_x = max(8, int(16 * scale_factor))
-pad_y = max(4, int(8 * scale_factor))
-radius = max(4, int(8 * scale_factor))
+  const escapedText = escapeBadgeXml(text);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect x="0" y="0" width="${w}" height="${h}" rx="${radius}" ry="${radius}" fill="rgba(0, 0, 0, 0.72)" />
+  <text x="${padX}" y="${textY}" font-family="Noto Sans Devanagari, Noto Sans, sans-serif" font-size="${scaledFontSize}" font-weight="bold" fill="rgba(255, 255, 255, 0.96)">${escapedText}</text>
+</svg>`;
 
-try:
-    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
-except Exception:
-    try:
-        font = ImageFont.truetype("/System/Library/Fonts/SFCompact.ttf", font_size)
-    except Exception:
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-        except Exception:
-            font = ImageFont.load_default()
+  const fontFiles = [
+    path.join(process.cwd(), "public", "assets", "fonts", "NotoSans.ttf"),
+    path.join(process.cwd(), "public", "assets", "fonts", "NotoSansDevanagari.ttf"),
+    "/System/Library/Fonts/Kohinoor.ttc",
+    "/System/Library/Fonts/Helvetica.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  ].filter((p) => fs.existsSync(p));
 
-dummy = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
-d = ImageDraw.Draw(dummy)
-bbox = d.textbbox((0, 0), text, font=font)
-text_w = bbox[2] - bbox[0]
-text_h = bbox[3] - bbox[1]
+  const resvg = new Resvg(svg, {
+    font: {
+      loadSystemFonts: true,
+      fontFiles,
+      defaultFontFamily: "Noto Sans Devanagari",
+    },
+  });
 
-w = text_w + (pad_x * 2)
-h = text_h + (pad_y * 2)
-
-img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-draw = ImageDraw.Draw(img)
-draw.rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=(0, 0, 0, 180))
-draw.text((pad_x - bbox[0], pad_y - bbox[1]), text, fill=(255, 255, 255, 245), font=font)
-img.save(output)
-`;
-  const sanitized = text.replace(/['"\\]/g, "");
-  const cmd = `python3 -c '${pyScript}' "${sanitized}" "${outputPath}" ${fontSize} ${videoHeight}`;
-  await execAsync(cmd);
+  const pngBuffer = resvg.render().asPng();
+  await fsp.writeFile(outputPath, pngBuffer);
   return outputPath;
 }
 
