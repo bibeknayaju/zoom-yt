@@ -563,6 +563,14 @@ export function AutopilotControlCard() {
                                   <span className="text-blue-600 dark:text-blue-400 font-semibold">
                                     Queued for processing
                                   </span>
+                                ) : item.status === "zoom_processing" ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-semibold inline-flex items-center gap-1">
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> Rendering on Zoom (~30-45m)
+                                  </span>
+                                ) : item.status === "already_queued" ? (
+                                  <span className="text-sky-600 dark:text-sky-400 font-semibold">
+                                    In progress
+                                  </span>
                                 ) : (
                                   <span className="text-slate-500 dark:text-zinc-400">
                                     {item.status}

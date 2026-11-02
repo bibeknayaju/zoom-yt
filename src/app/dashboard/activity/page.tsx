@@ -863,6 +863,14 @@ export default function ActivityLogsPage() {
                                         <span className="font-semibold text-blue-600 dark:text-blue-400">
                                           Queued for upload
                                         </span>
+                                      ) : it.status === "zoom_processing" ? (
+                                        <span className="font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
+                                          <Loader2 className="w-3 h-3 animate-spin" /> Rendering on Zoom (~30-45m)
+                                        </span>
+                                      ) : it.status === "already_queued" ? (
+                                        <span className="font-semibold text-sky-600 dark:text-sky-400">
+                                          Already processing
+                                        </span>
                                       ) : (
                                         <span className="text-slate-500">{it.status}</span>
                                       )}

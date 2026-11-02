@@ -28,7 +28,7 @@ export interface AutopilotDiscoveredItem {
   startTime: string;
   durationMinutes: number;
   fileSizeBytes: number;
-  status: "queued" | "already_uploaded" | "already_queued";
+  status: "queued" | "already_uploaded" | "already_queued" | "zoom_processing";
   youtubeUrl?: string;
 }
 
@@ -43,6 +43,7 @@ export interface AutopilotRunRecord {
   newlyQueuedCount: number;
   alreadyUploadedCount: number;
   alreadyQueuedCount: number;
+  zoomProcessingCount?: number;
   status: "success" | "running" | "failed" | "partial";
   summary: string;
   items: AutopilotDiscoveredItem[];
@@ -208,6 +209,7 @@ export async function runAutopilotDiscovery(
   const fromDateUtc = fromDateUtcObj.toISOString().split("T")[0];
 
   const candidateRecordings: DiscoveredClassRecording[] = [];
+  const zoomProcessingItems: AutopilotDiscoveredItem[] = [];
 
   // Helper to prioritize views
   const getViewPriority = (type?: string) => {
@@ -246,7 +248,32 @@ export async function runAutopilotDiscovery(
               (f: any) => f.file_type === "MP4" && f.status === "completed" && f.file_size > 0
             );
 
-            if (rawMp4Files.length === 0) continue;
+            // Also check if any files are still processing on Zoom
+            const processingFiles = (m.recording_files || []).filter(
+              (f: any) => f.file_type === "MP4" && (f.status === "processing" || f.status !== "completed")
+            );
+
+            if (rawMp4Files.length === 0) {
+              const meetingStart = m.start_time;
+              if (
+                isRecordedOnDateInNepal(meetingStart, targetDateNepal) &&
+                (processingFiles.length > 0 || (m.recording_count > 0 && (!m.recording_files || m.recording_files.length === 0)))
+              ) {
+                console.log(
+                  `⏳ [Auto-Pilot] Class "${m.topic}" (${acc.account_name}) is currently rendering on Zoom cloud (takes ~30-45m). Will auto-queue once ready.`
+                );
+                zoomProcessingItems.push({
+                  accountName: acc.account_name,
+                  topic: m.topic || "Class Recording",
+                  fileId: processingFiles[0]?.id || `rendering_${m.id}`,
+                  startTime: meetingStart,
+                  durationMinutes: m.duration || 0,
+                  fileSizeBytes: 0,
+                  status: "zoom_processing",
+                });
+              }
+              continue;
+            }
 
             // Sort chronologically
             rawMp4Files.sort((a: any, b: any) => {
@@ -435,14 +462,25 @@ export async function runAutopilotDiscovery(
     newlyQueuedCount: toQueue.length,
     alreadyUploadedCount,
     alreadyQueuedCount,
+    zoomProcessingCount: zoomProcessingItems.length,
     status: toQueue.length > 0 ? "running" : "success",
     summary:
       candidateRecordings.length === 0
-        ? `Scanned ${activeAccounts.length} accounts. 0 recordings found for today (${targetDateNepal} NPT).`
+        ? zoomProcessingItems.length > 0
+          ? `Scanned ${activeAccounts.length} accounts. 0 completed recordings ready yet, but ${zoomProcessingItems.length} class(es) are currently rendering on Zoom cloud (takes ~30-45m after class ends). Will auto-queue once ready.`
+          : `Scanned ${activeAccounts.length} accounts. 0 recordings found for today (${targetDateNepal} NPT).`
         : toQueue.length > 0
-        ? `Discovered ${candidateRecordings.length} classes for today (${toQueue.length} newly queued for upload, ${alreadyUploadedCount} already uploaded).`
-        : `Scanned ${activeAccounts.length} accounts for today. All ${candidateRecordings.length} classes are already uploaded to YouTube.`,
-    items: discoveredItems,
+        ? `Discovered ${candidateRecordings.length} classes for today (${toQueue.length} newly queued for upload, ${alreadyUploadedCount} already uploaded)${
+            zoomProcessingItems.length > 0
+              ? `, +${zoomProcessingItems.length} still rendering on Zoom`
+              : ""
+          }.`
+        : `Scanned ${activeAccounts.length} accounts for today. All ${candidateRecordings.length} classes are already uploaded to YouTube${
+            zoomProcessingItems.length > 0
+              ? ` (${zoomProcessingItems.length} other class still rendering on Zoom)`
+              : ""
+          }.`,
+    items: [...discoveredItems, ...zoomProcessingItems],
   };
 
   await saveAutopilotRunRecord(supabase, runRecord);
